@@ -65,7 +65,8 @@ to mid-match jobs — all without manual intervention.
 | Visa sponsorship check | ✅ Fully |
 | AI scoring (0–100) | ✅ Fully |
 | Telegram alerts (high match) | ✅ Fully |
-| Auto-apply (score 75–84, cap 20/day) | ✅ Fully (Playwright, Indeed Easy Apply only) |
+| Auto-apply for Indeed Easy Apply jobs (score 75–84, cap 20/day) | ✅ Fully (Playwright MCP) |
+| One-click manual apply for Workday/Greenhouse/company sites | 🙋 Human (dashboard button, direct URL) |
 | Recruiter tracing | ✅ Fully (LinkedIn MCP) |
 | Outreach message drafting | ✅ Claude-generated |
 | Final approval for score ≥ 85 | 🙋 Human (one click in dashboard) |
@@ -75,5 +76,6 @@ to mid-match jobs — all without manual intervention.
 
 - Does not restrict scraping to specific companies — all listings are fetched and scored; tiers only affect score weighting
 - Does not apply to roles requiring security clearance
+- Does not attempt to automate Workday, Greenhouse, Lever, Oracle HCM, or any ATS behind Cloudflare Bot Management — those require human apply via dashboard
 - Does not bypass CAPTCHA or violate platform ToS for mass scraping
 - Does not store or log any secrets or credentials in code

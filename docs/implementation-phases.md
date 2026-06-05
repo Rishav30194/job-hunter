@@ -192,23 +192,36 @@ streamlit run dashboard/app.py
 
 ---
 
-## Phase 7 — Auto-Apply via Playwright MCP
-> Replace raw Playwright code with Microsoft Playwright MCP for resilient LLM-driven browser automation.
+## Phase 7 — Auto-Apply via Playwright MCP (Indeed Easy Apply only)
+> Automate Indeed Easy Apply submissions using Microsoft Playwright MCP.
+
+**Scope decision — Indeed Easy Apply only:**
+Workday, Greenhouse, Lever, Taleo, and Oracle HCM (used by virtually all Tier-1 targets)
+sit behind Cloudflare Bot Management. Standard Playwright — and even stealth forks like
+Patchright — cannot reliably defeat Cloudflare's behavioral analysis on high-security
+configurations at Tier-1 banks and FAANG. The anti-bot space changes weekly; any
+workaround that works today may break within weeks.
+
+Auto-apply is therefore scoped to `indeed.com` URLs only, where bot pressure is lower
+and the authenticated session reduces detection risk. Jobs on all other platforms are
+left as `queued_apply` and surfaced in the dashboard for one-click manual apply.
 
 **Why Playwright MCP over raw Playwright:**
-Playwright MCP drives the browser via accessibility snapshots. Claude reads the page structure
-intelligently and fills forms — no CSS selectors, no breaks when LinkedIn updates its UI.
+Accessibility snapshots instead of CSS selectors — Claude reads page structure
+intelligently and fills forms without brittle element targeting.
 
 ### Tasks
 - [ ] Install: `npx @playwright/mcp@latest` (verify in `.mcp.json`)
 - [ ] `src/apply/playwright_apply.py`
+  - [ ] Pre-check: skip if `job['url']` does not contain `indeed.com` — return `skipped`
   - [ ] Call Playwright MCP tools: `browser_navigate`, `browser_click`, `browser_type`, `browser_snapshot`
-  - [ ] LinkedIn login (session cookie reuse where possible)
+  - [ ] Indeed login (session cookie reuse where possible)
   - [ ] Detect Easy Apply button via snapshot, not selector
   - [ ] Multi-step form: Claude reads each step, fills intelligently
   - [ ] Upload resume from local path
   - [ ] Submit and confirm success/failure
   - [ ] On failure: `status=apply_failed`, log reason, Telegram alert
+  - [ ] On skipped (non-Indeed URL): leave `status=queued_apply` for dashboard
 - [ ] Integrate into `pipeline.py` after routing
 - [ ] Daily cap: 20/day enforced in router
 
@@ -218,7 +231,7 @@ intelligently and fills forms — no CSS selectors, no breaks when LinkedIn upda
 PLAYWRIGHT_HEADLESS=false python -c "
 from src.apply.playwright_apply import apply_to_job
 result = apply_to_job({
-    'url': 'https://www.linkedin.com/jobs/view/XXXXXXXXX',
+    'url': 'https://www.indeed.com/viewjob?jk=XXXXXXXXX',
     'title': 'Senior Software Engineer',
     'company': 'Test Co',
     'id': 'test-id-001',
@@ -226,8 +239,9 @@ result = apply_to_job({
 print('Result:', result)
 "
 ```
-> ⚠️ Always test on a known Easy Apply posting with HEADLESS=false first.
+> ⚠️ Always test on a known Indeed Easy Apply posting with HEADLESS=false first.
 > Confirm submission before enabling on real jobs.
+> Non-Indeed URLs will return 'skipped' immediately — do not test on Workday/Greenhouse.
 
 ---
 

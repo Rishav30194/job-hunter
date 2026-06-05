@@ -88,7 +88,7 @@
 
 | MCP | Package | Purpose | Auth Required |
 |-----|---------|---------|---------------|
-| `playwright` | `@playwright/mcp` (Microsoft) | LLM-driven browser for auto-apply | None |
+| `playwright` | `@playwright/mcp` (Microsoft) | Indeed Easy Apply automation only — see scope note below | None |
 | `brave-search` | `@modelcontextprotocol/server-brave-search` | Company intelligence research | Brave API key |
 | `memory` | `@modelcontextprotocol/server-memory` | Persist past application/rejection memory | None |
 | `fetch` | `@modelcontextprotocol/server-fetch` | Scrape company career pages | None |
@@ -98,6 +98,24 @@
 | `notion` | `@notionhq/notion-mcp-server` | Mirror pipeline to Notion Kanban board | Notion API key |
 
 All servers are configured in `.mcp.json` at project root. Env vars are loaded from `.env`.
+
+### Auto-Apply Scope — Why Indeed Easy Apply Only
+
+Standard `@playwright/mcp` is intentionally scoped to **Indeed Easy Apply** listings only.
+
+**Workday, Greenhouse, Lever, Taleo, Oracle HCM** — which cover the majority of Tier-1
+targets (JPMorgan, Goldman, Microsoft, etc.) — all sit behind Cloudflare Bot Management.
+Standard Playwright is fingerprinted and blocked at the TLS/JS layer before it can fill
+any form. Patchright (a stealth Playwright fork, 200K+ weekly downloads) bypasses
+*fingerprinting* checks but cannot reliably defeat Cloudflare's *behavioral* analysis
+(mouse-movement entropy, scroll timing, interaction rhythm) on high-security configurations.
+The anti-bot landscape is also an ongoing arms race — any workaround that works today may
+stop working within weeks.
+
+**Decision:** auto-apply only where confidence is high (Indeed Easy Apply). All other
+jobs — Workday portals, company career sites — are routed to `human_review` with a direct
+URL so the user can apply in one click from the dashboard. This is reliable and sustainable;
+trying to automate Workday at Tier-1 banks is not.
 
 ---
 
@@ -130,8 +148,11 @@ Routes scored jobs into four buckets, sorted by score descending so caps fill hi
 Overflow from human_review cap spills to queued_apply; overflow from auto-apply cap is archived.
 
 ### `src/apply/playwright_apply.py` *(Phase 7 — uses Playwright MCP)*
-Calls Playwright MCP tools instead of raw Playwright Python. Claude navigates the
-browser via accessibility snapshots — no CSS selectors, resilient to UI changes.
+Scoped to **Indeed Easy Apply only** (`job.url` must contain `indeed.com`).
+Calls Playwright MCP tools via accessibility snapshots — no CSS selectors.
+Jobs on Workday/Greenhouse/Oracle/company career sites are left as `queued_apply`
+for dashboard one-click manual apply; those portals use Cloudflare Bot Management
+which reliably blocks headless browsers at scale. See MCP scope note above.
 Logs success/failure per job; marks `apply_failed` in DB on error.
 
 ### `src/recruiter/tracer.py` *(Phase 8)*
