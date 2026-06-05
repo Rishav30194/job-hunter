@@ -43,3 +43,10 @@ streamlit run dashboard/app.py  # dashboard on :8501
 - `JOB_MAX_AGE_HOURS` default: 48 (no stale listings)
 - Hard excluded company: Infosys Limited
 - Visa filter: skip only if job description explicitly rejects sponsorship
+
+## Development Rules
+- **One file at a time.** Write one class/module, stop, verify it compiles and the unit test passes, then move to the next.
+- Never write multiple source files in a single response.
+- Follow the phase order in `docs/implementation-phases.md` exactly — do not skip ahead.
+- Before writing any file, state which phase and task it belongs to.
+- After writing a file, show the test command from the phase doc and wait for the user to confirm it passes before continuing.
