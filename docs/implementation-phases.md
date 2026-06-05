@@ -35,7 +35,7 @@ npx -y @modelcontextprotocol/server-memory --version
 > Fetch real jobs from all platforms, apply hard filters, deduplicate against DB.
 
 ### Tasks
-- [ ] `data/companies.py` — Tier-1/Tier-2 target company list
+- [x] `data/companies.py` — Tier-1/Tier-2/Tier-3 target company list
 - [ ] `src/ingestion/fetcher.py` — jobspy wrapper, visa/salary/age/company filters
 - [ ] `src/ingestion/deduplicator.py` — SHA-256 hash dedup against Postgres
 
