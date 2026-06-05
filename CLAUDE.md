@@ -1,106 +1,90 @@
 # job-hunter
 
-Autonomous 24/7 job search, scoring, and tracking system for US tech/finance roles.
+Autonomous 24/7 job search, scoring, and application system for US tech/finance roles.
 
 ## Stack
 - Python 3.12, APScheduler, jobspy, Anthropic Claude API
 - PostgreSQL (state), Redis (cache), Docker Compose
-- Streamlit (dashboard), Playwright (auto-apply)
-- Telegram (alerts)
+- Streamlit (dashboard), Playwright MCP (auto-apply), Telegram (alerts)
 
-## Setup
+## Setup & Run
 ```bash
-cp .env.example .env                        # fill in all values
-python3.12 -m venv venv                     # always use Python 3.12
+cp .env.example .env                     # fill in all required values
+python3.12 -m venv venv
 venv/bin/pip install -r requirements.txt
 venv/bin/playwright install chromium
 docker compose up -d postgres redis
 venv/bin/alembic upgrade head
+
+venv/bin/python src/main.py              # scheduler — runs every 6h
+venv/bin/streamlit run dashboard/app.py  # dashboard on :8501
 ```
 
-## Run
-```bash
-venv/bin/python src/main.py                         # scheduler (runs every 6h)
-venv/bin/streamlit run dashboard/app.py             # dashboard on :8501
-```
+> Always use `venv/bin/python`. System `python3` is 3.14 — wrong version.
 
-## Python Environment
-- Always use `venv/bin/python` — never system `python3` (that is 3.14)
-- Venv is Python 3.12.13, located at `./venv/`
-- All commands in this file and in phase test snippets use `venv/bin/python`
+---
 
-## Key Env Vars
-| Var | Purpose |
-|-----|---------|
-| `ANTHROPIC_API_KEY` | Claude scoring engine |
-| `TELEGRAM_BOT_TOKEN` | Alerts |
-| `TELEGRAM_CHAT_ID` | Your chat ID |
-| `LINKEDIN_EMAIL/PASSWORD` | Recruiter tracing |
-| `DATABASE_URL` | Postgres connection |
+## New Session Startup Order
+Follow this exact sequence before touching any code:
 
-## Thresholds
-- Score ≥ 85 → Human review queue
-- Score 60–84 → Auto-apply (capped at 20/day)
-- Score < 60 → Archived
+1. Read `CLAUDE.md` (this file) — constraints and rules first.
+2. Read `docs/implementation-phases.md` — find the first unchecked task.
+3. Read `docs/ARCHITECTURE.md` — understand how the task fits the system.
+4. Run `git log --oneline -10` — verify actual progress matches the docs.
+5. Run `ls src/ dashboard/ data/ config/` — confirm which files physically exist.
+6. State the current phase, last completed task, and next task — then wait for user confirmation before writing any code.
 
-## Secrets & Configuration — Hard Rules
+---
 
-**No credential or secret may ever appear in source code.** This is a non-negotiable rule that applies to every file in this repo.
+## Development Rules
+- **One file at a time.** Write one module, verify it passes its test, then move on.
+- Never write multiple source files in a single response.
+- Follow phase order in `docs/implementation-phases.md` — do not skip ahead.
+- State the phase and task before writing any file.
+- After writing a file, run the test from the phase doc and wait for the user to confirm it passes.
+- **Never assume.** Any value, API behaviour, or package version not verified from a primary source must be flagged as an assumption before use.
 
-What counts as a secret / must come from environment:
+## Documentation Rules
+- Every class and non-trivial method must have a short docstring stating its purpose.
+- Class: one or two sentences on responsibility and lifetime.
+- Method: one line on what it does; add a second only for non-obvious side-effects or return values.
+- Skip docstrings on trivial properties, dunder methods, and self-explanatory names.
+- No param/return tables, no section headers — plain prose only.
+
+## Before Every Commit
+1. Update `docs/implementation-phases.md` — check off completed tasks, update the Progress Summary table.
+2. Update any other docs affected by the change (`ARCHITECTURE.md`, `PROJECT_OVERVIEW.md`).
+3. Stage updated docs in the same commit as the code.
+
+---
+
+## Secrets & Configuration
+
+**No credential or secret may ever appear in source code.**
+
+All secrets load exclusively through `config/settings.py` (pydantic-settings from `.env`).
+Missing required keys must fail loudly on startup — no silent fallbacks.
+
 | Category | Examples |
 |----------|---------|
 | API keys | `ANTHROPIC_API_KEY`, `BRAVE_API_KEY` |
 | Tokens | `TELEGRAM_BOT_TOKEN`, `NOTION_API_KEY` |
 | Credentials | `LINKEDIN_EMAIL`, `LINKEDIN_PASSWORD` |
-| OAuth values | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` |
-| DB connection | `DATABASE_URL`, `POSTGRES_PASSWORD`, `REDIS_URL` |
-| Personal data | `TELEGRAM_CHAT_ID`, any email address, any phone number |
+| OAuth | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` |
+| DB | `DATABASE_URL`, `POSTGRES_PASSWORD`, `REDIS_URL` |
+| Personal | `TELEGRAM_CHAT_ID`, any email or phone number |
 
-Rules:
-- All values above are loaded exclusively through `config/settings.py` (pydantic-settings reads from `.env`)
-- No `os.environ.get("KEY", "fallback-value")` with a real fallback — if the key is missing the app must fail loudly on startup, not silently use a default
-- `.env` is in `.gitignore` and must never be committed
-- `.env.example` contains only placeholder strings (e.g. `sk-ant-...`), never real values
-- If a new secret is needed: add it to `.env.example`, add it to `config/settings.py` as a required field, document it in the Key Env Vars table below — in that order
-
-## Constraints
-- `FETCH_INTERVAL_HOURS` default: 6
-- `JOB_MAX_AGE_HOURS` default: 48 (no stale listings)
-- Hard excluded company: Infosys / Infosys Limited only (current employer) — all other companies including staffing firms are eligible
-- Visa filter: skip only if job description explicitly rejects sponsorship
-
-## New Session Startup Order
-When starting a fresh session, follow this exact order before touching any code:
-
-1. **`CLAUDE.md`** — you are here. Read constraints and rules first.
-2. **`docs/implementation-phases.md`** — find the current phase, identify the first unchecked task. This tells you exactly where to pick up.
-3. **`docs/ARCHITECTURE.md`** — understand the system design and how the current task fits.
-4. **`docs/PROJECT_OVERVIEW.md`** — candidate profile, company tiers, automation goals.
-5. **`git log --oneline -10`** — see what was last committed to understand actual progress vs. docs.
-6. **`ls src/ dashboard/ data/ config/`** — verify which files physically exist vs. what phases claim is done.
-7. State out loud: current phase, last completed task, next task to build — then wait for user confirmation before writing any code.
+Adding a new secret: add to `.env.example` → `config/settings.py` → this table. In that order.
 
 ---
 
-## Before Every Commit
-Before running `git commit`, always:
-1. Update `docs/implementation-phases.md` — check off completed tasks, update the Progress Summary table.
-2. Update any other docs affected by the change (e.g. `ARCHITECTURE.md` if a component changed, `PROJECT_OVERVIEW.md` if scope changed).
-3. Stage the updated docs in the same commit as the code.
-
-## Development Rules
-- **One file at a time.** Write one class/module, stop, verify it compiles and the unit test passes, then move to the next.
-- Never write multiple source files in a single response.
-- Follow the phase order in `docs/implementation-phases.md` exactly — do not skip ahead.
-- Before writing any file, state which phase and task it belongs to.
-- After writing a file, show the test command from the phase doc and wait for the user to confirm it passes before continuing.
-- **Never assume.** If any value, list, API behaviour, package name, or fact is not verified from a primary source (official docs, live fetch, npm/PyPI registry), state it explicitly as an assumption and flag it for the user to confirm before using it in code or docs.
-
-## Documentation Rules
-- Every class and every non-trivial method must have a short docstring stating its purpose.
-- Class docstring: one or two sentences on responsibility and lifetime.
-- Method docstring: one line on what it does; add a second line only if there is a non-obvious side-effect or return value.
-- Skip docstrings on trivial properties, dunder methods, and methods whose name is fully self-explanatory.
-- No param/return tables, no section headers — plain prose only.
-- Never restate the function name in the docstring.
+## Pipeline Constraints
+| Setting | Value |
+|---------|-------|
+| Fetch interval | 6 hours |
+| Max job age | 48 hours |
+| Score ≥ 85 | Human review queue |
+| Score 60–84 | Auto-apply (capped at 10/day) |
+| Score < 60 | Archived |
+| Visa filter | Skip only if JD explicitly rejects sponsorship |
+| Hard excluded company | Infosys / Infosys Limited (current employer) |
