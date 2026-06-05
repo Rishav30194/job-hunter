@@ -1,0 +1,52 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # ------------------------------------------------------------------ #
+    # Required — app fails loudly on startup if any of these are missing  #
+    # ------------------------------------------------------------------ #
+    database_url: str
+    anthropic_api_key: str
+    telegram_bot_token: str
+    telegram_chat_id: str
+
+    # ------------------------------------------------------------------ #
+    # Optional — enabled only when the relevant phase is active           #
+    # ------------------------------------------------------------------ #
+    redis_url: str = "redis://redis:6379/0"
+
+    linkedin_email: str = ""
+    linkedin_password: str = ""
+
+    brave_api_key: str = ""
+
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_refresh_token: str = ""
+
+    notion_api_key: str = ""
+    notion_database_id: str = ""
+
+    # ------------------------------------------------------------------ #
+    # Tunable pipeline behaviour                                           #
+    # ------------------------------------------------------------------ #
+    human_review_threshold: int = 85
+    auto_apply_threshold: int = 60
+    max_auto_applies_per_day: int = 10
+
+    fetch_interval_hours: int = 6
+    job_max_age_hours: int = 48
+    zero_result_alert_threshold: int = 3
+
+    min_salary: int = 100_000
+
+    playwright_headless: bool = True
+
+
+settings = Settings()
