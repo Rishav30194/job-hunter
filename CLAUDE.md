@@ -10,18 +10,24 @@ Autonomous 24/7 job search, scoring, and tracking system for US tech/finance rol
 
 ## Setup
 ```bash
-cp .env.example .env        # fill in all values
+cp .env.example .env                        # fill in all values
+python3.12 -m venv venv                     # always use Python 3.12
+venv/bin/pip install -r requirements.txt
+venv/bin/playwright install chromium
 docker compose up -d postgres redis
-pip install -r requirements.txt
-playwright install chromium
-alembic upgrade head
+venv/bin/alembic upgrade head
 ```
 
 ## Run
 ```bash
-python src/main.py          # scheduler (runs every 6h)
-streamlit run dashboard/app.py  # dashboard on :8501
+venv/bin/python src/main.py                         # scheduler (runs every 6h)
+venv/bin/streamlit run dashboard/app.py             # dashboard on :8501
 ```
+
+## Python Environment
+- Always use `venv/bin/python` — never system `python3` (that is 3.14)
+- Venv is Python 3.12.13, located at `./venv/`
+- All commands in this file and in phase test snippets use `venv/bin/python`
 
 ## Key Env Vars
 | Var | Purpose |
