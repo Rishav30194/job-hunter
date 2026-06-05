@@ -121,28 +121,94 @@ SCORE BANDS
 """
 
 _OUTPUT_FORMAT = """
-OUTPUT FORMAT — respond with ONLY valid JSON, no prose, no markdown fences:
+OUTPUT FORMAT
+Respond with ONLY a valid JSON object. No prose, no markdown fences, no explanation outside the JSON.
+Any deviation from this format will cause a system error.
+
 {
   "score": <integer 0-100>,
-  "reasoning": "<2-3 sentences: what matched, what didn't, key factor that drove the score>",
+  "reasoning": "<2-3 sentences: what matched, what did not, the single factor that drove the score>",
   "visa_disqualified": <true|false>
 }
 """
 
+# Few-shot examples ground Claude's scoring scale and format.
+# Using assistant-prefill style: each example is a (user, assistant) pair.
+_EXAMPLES: list[tuple[str, str]] = [
+    # Example 1 — near-perfect match
+    (
+        """\
+Title: Senior Software Engineer – Payments
+Company: JPMorgan Chase (Tier: Tier-1)
+Location: New York, NY | Work type: Hybrid
+Salary: $160,000 - $210,000/year (USD)
+
+Job Description:
+Design and build high-throughput payment processing microservices in Java 17/21
+and Spring Boot. Work with Kafka for event-driven transaction pipelines. 5+ years
+Java backend experience required. AWS, PostgreSQL, and CI/CD familiarity a plus.
+Finance domain knowledge helpful. Visa sponsorship available for qualified candidates.""",
+        '{"score": 93, "reasoning": "Near-perfect tech match: Java 21, Spring Boot, Kafka, AWS, PostgreSQL all align directly with the candidate\'s core stack. Senior level with 5+ years matches target seniority. Finance/payments domain is the candidate\'s strongest domain preference. Tier-1 company with strong compensation. Visa sponsorship explicitly available.", "visa_disqualified": false}',
+    ),
+    # Example 2 — visa disqualified
+    (
+        """\
+Title: Senior Backend Engineer
+Company: Acme Corp (Tier: Unknown)
+Location: Remote | Work type: Remote
+Salary: Not stated
+
+Job Description:
+Build scalable Node.js and React services. We are looking for engineers with 4+
+years of JavaScript/TypeScript experience. Must be authorized to work in the US
+without sponsorship now or in the future. PostgreSQL and AWS experience a plus.""",
+        '{"score": 0, "reasoning": "Visa disqualified: description explicitly states \'must be authorized to work in the US without sponsorship\'. Additionally, the role is primarily Node.js/React — not a Java backend position — which would have resulted in a low score regardless.", "visa_disqualified": true}',
+    ),
+    # Example 3 — decent but weak tech match
+    (
+        """\
+Title: Software Engineer
+Company: Startup Inc (Tier: Unknown)
+Location: San Francisco, CA | Work type: Onsite
+Salary: $120,000 - $140,000/year (USD)
+
+Job Description:
+Join our platform team building internal tools. We use Python (Django) as our
+primary backend, with some Java services maintained by the team. 3-5 years
+experience. No specific visa sponsorship policy mentioned.""",
+        '{"score": 52, "reasoning": "Java is present but secondary — Python/Django is the primary stack, which is a poor match for a Java specialist. Seniority and compensation are acceptable. Unknown company tier and no domain bonus. Would require the candidate to shift away from their core expertise.", "visa_disqualified": false}',
+    ),
+]
+
 
 def build_system_prompt() -> str:
-    """Return the system prompt with resume and rubric baked in.
+    """Return the system prompt with resume, rubric, and output format baked in.
 
-    This is sent once per API call (or cached). It gives Claude full candidate
-    context so the user prompt can stay minimal — just the job details.
+    Sent once per API call and eligible for Anthropic prompt caching.
+    The few-shot examples are injected via get_few_shot_messages() as separate
+    message turns — not inline here — so the cache boundary is clean.
     """
     return (
         "You are a precise job-match scorer for a specific candidate. "
-        "Score each job 0–100 based on fit with the candidate's profile.\n\n"
+        "Score each job 0–100 based on fit with the candidate's profile. "
+        "Always respond with ONLY the JSON object described below — nothing else.\n\n"
         f"CANDIDATE PROFILE:\n{_RESUME}\n\n"
         f"{_RUBRIC}\n\n"
         f"{_OUTPUT_FORMAT}"
     )
+
+
+def get_few_shot_messages() -> list[dict]:
+    """Return few-shot (user, assistant) message pairs to prepend before the real job.
+
+    These anchor Claude's scoring scale and output format, reducing hallucination
+    and format drift across a batch of jobs.
+    """
+    messages = []
+    for user_text, assistant_text in _EXAMPLES:
+        messages.append({"role": "user", "content": user_text})
+        messages.append({"role": "assistant", "content": assistant_text})
+    return messages
 
 
 def build_user_prompt(job: dict) -> str:
