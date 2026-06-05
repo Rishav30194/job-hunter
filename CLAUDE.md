@@ -37,8 +37,28 @@ streamlit run dashboard/app.py  # dashboard on :8501
 - Score 60–84 → Auto-apply (capped at 20/day)
 - Score < 60 → Archived
 
+## Secrets & Configuration — Hard Rules
+
+**No credential or secret may ever appear in source code.** This is a non-negotiable rule that applies to every file in this repo.
+
+What counts as a secret / must come from environment:
+| Category | Examples |
+|----------|---------|
+| API keys | `ANTHROPIC_API_KEY`, `BRAVE_API_KEY` |
+| Tokens | `TELEGRAM_BOT_TOKEN`, `NOTION_API_KEY` |
+| Credentials | `LINKEDIN_EMAIL`, `LINKEDIN_PASSWORD` |
+| OAuth values | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` |
+| DB connection | `DATABASE_URL`, `POSTGRES_PASSWORD`, `REDIS_URL` |
+| Personal data | `TELEGRAM_CHAT_ID`, any email address, any phone number |
+
+Rules:
+- All values above are loaded exclusively through `config/settings.py` (pydantic-settings reads from `.env`)
+- No `os.environ.get("KEY", "fallback-value")` with a real fallback — if the key is missing the app must fail loudly on startup, not silently use a default
+- `.env` is in `.gitignore` and must never be committed
+- `.env.example` contains only placeholder strings (e.g. `sk-ant-...`), never real values
+- If a new secret is needed: add it to `.env.example`, add it to `config/settings.py` as a required field, document it in the Key Env Vars table below — in that order
+
 ## Constraints
-- Never hardcode secrets — all config via `.env`
 - `FETCH_INTERVAL_HOURS` default: 6
 - `JOB_MAX_AGE_HOURS` default: 48 (no stale listings)
 - Hard excluded company: Infosys / Infosys Limited only (current employer) — all other companies including staffing firms are eligible
