@@ -6,7 +6,7 @@ An autonomous, 24/7 job search and application system tailored for a Senior Java
 targeting Tier-1 and Tier-2 tech and finance companies in the US job market.
 
 The system runs continuously on a VPS, fetches fresh job postings every 6 hours from multiple
-platforms (Indeed, Glassdoor, ZipRecruiter, Google Jobs), scores each posting using Claude AI against
+platforms (Indeed, Google Jobs), scores each posting using Claude AI against
 a detailed candidate profile, routes high-match jobs to a human review queue, and auto-applies
 to mid-match jobs — all without manual intervention.
 
@@ -16,7 +16,7 @@ to mid-match jobs — all without manual intervention.
 |------|-----------|
 | Zero stale listings | Hard 48-hour cutoff on all fetched jobs |
 | Minimize human time | Auto-apply for score 60–84; human only sees score ≥ 85 |
-| Maximum coverage | 5 search terms × Indeed / Glassdoor / ZipRecruiter / Google Jobs per run |
+| Maximum coverage | 5 search terms × Indeed + Google Jobs per run (Google aggregates Glassdoor/ZipRecruiter/LinkedIn) |
 | Smart filtering | Claude Haiku scores each job against actual resume |
 | Visa safety | Explicit "no sponsorship" text → auto-discard |
 | Recruiter reach | LinkedIn Premium tracing for every high-match job |

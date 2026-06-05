@@ -19,8 +19,11 @@ SEARCH_TERMS: list[str] = [
     "Senior Backend Engineer",
 ]
 
-# Platforms supported by jobspy. LinkedIn excluded — silently rate-limits.
-PLATFORMS: list[str] = ["indeed", "glassdoor", "zip_recruiter", "google"]
+# Glassdoor excluded — jobspy location parsing bug (400 errors).
+# ZipRecruiter excluded — bot detection blocks non-browser requests (403).
+# LinkedIn excluded — silently rate-limits without error.
+# Google Jobs aggregates listings from all three, so coverage loss is minimal.
+PLATFORMS: list[str] = ["indeed", "google"]
 
 # Job descriptions containing any of these phrases are visa-disqualified.
 VISA_REJECTION_PHRASES: list[str] = [

@@ -12,8 +12,8 @@
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                       INGESTION LAYER                              │   │
-│  │  jobspy ──► LinkedIn / Indeed / Glassdoor / ZipRecruiter          │   │
-│  │  5 search terms × 4 platforms = up to 1,000 listings/run          │   │
+│  │  jobspy ──► Indeed / Google Jobs                                   │   │
+│  │  5 search terms × 2 platforms = up to 250 listings/run            │   │
 │  │  Hard filters: age ≤ 48h · salary ≥ $100K · no visa rejection     │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
