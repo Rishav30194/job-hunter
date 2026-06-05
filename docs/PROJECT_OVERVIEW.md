@@ -35,11 +35,27 @@ to mid-match jobs — all without manual intervention.
 
 ## Target Companies
 
-- **Tier-1 Tech:** Google, Meta, Amazon, Apple, Microsoft, Netflix, Salesforce, Adobe
-- **Tier-1 Finance:** JPMorgan, Goldman Sachs, Morgan Stanley, Citi, Bank of America, Wells Fargo
-- **Tier-2 Tech:** Stripe, Uber, Snowflake, Databricks, Palantir, Cloudflare, CrowdStrike, NVIDIA
-- **Tier-2 Finance:** Capital One, Mastercard, Visa, PayPal, Fidelity, BlackRock, Citadel, Two Sigma
-- **Fintechs:** Brex, Plaid, Affirm, SoFi, Robinhood, Chime
+> Source: MyVisaJobs FY2025 H1B LCA data (same DOL source as H1BGrader). Body shops and staffing
+> firms excluded even if they appear high on the H1B volume list.
+
+**Tier-1 — Highest H1B volume + top brand** *(score bonus applied in LLM rubric)*
+- **Tech:** Amazon, Microsoft, Google, Apple, Meta, IBM, Tesla, Intel, Qualcomm, Salesforce, Nvidia, Oracle, Cisco, Adobe, ServiceNow, Uber, LinkedIn, eBay, Micron, HPE, Expedia, Bloomberg, ADP
+- **Finance:** JPMorgan Chase, Goldman Sachs, Citibank, Bank of America, American Express, Morgan Stanley, Wells Fargo, Barclays, Visa, Mastercard, Charles Schwab, Fidelity Investments, BlackRock, PayPal, Capital One, Intuit, FIS, Optum
+
+**Tier-2 — Active H1B sponsors, strong product companies**
+- **Tech:** ByteDance, TikTok, DoorDash, T-Mobile, AMD (Advanced Micro Devices), Stripe, Snowflake, Databricks, Palantir, Cloudflare, CrowdStrike, Workday, Twilio, MongoDB, Elastic, Datadog, Splunk, Broadcom, DocuSign, Airbnb, Lyft, Palo Alto Networks, AT&T, Comcast, Charter Communications
+- **Finance/Fintech:** Robinhood, Coinbase, SoFi, Citadel, Two Sigma, D.E. Shaw, Point72, Millennium Management, Jane Street, State Street, Vanguard, T. Rowe Price, Northern Trust, US Bank, Elevance Health (Anthem)
+
+**Tier-3 — Mid-size legitimate H1B sponsors in tech/finance**
+- **Fintech:** Affirm, Brex, Plaid, Chime, Marqeta, Toast, Nerdwallet, Discover Financial, Synchrony Financial, Green Dot, LendingClub, Upstart
+- **Insurance/Health Tech:** Oscar Health, Clover Health, Humana, Cigna, Aetna (CVS Health), USAA, Progressive, Allstate, Northwestern Mutual, Elevance Health
+- **Regional Banking:** Truist Financial, PNC Financial, Fifth Third Bank, KeyCorp, Raymond James, LPL Financial, Regions Financial
+- **Other Tech:** Walmart Global Tech, Target Tech, Wayfair, Chewy, Rivian, Epic Systems, Veeva Systems, Tyler Technologies
+
+**Hard Excluded** *(body shops / staffing — filtered before scoring)*
+Cognizant, Tata Consultancy Services (TCS), Infosys, HCL America, Capgemini, LTIMindtree,
+Wipro, Tech Mahindra, Mphasis, Compunnel, Kforce, CGI, Virtusa, Randstad Digital, Hexaware,
+Synechron, Persistent Systems, Infinite Computer Solutions, Skilltune Technologies, Grandison Management
 
 ## What Gets Automated
 

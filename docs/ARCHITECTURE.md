@@ -111,6 +111,13 @@ Wraps `jobspy.scrape_jobs()` across 5 search terms × 4 platforms. Applies hard 
 SHA-256 hash dedup against Postgres. Also queries Memory MCP for past rejections —
 skips reapplying to companies that rejected within the past 90 days.
 
+### `data/companies.py`
+Three-tier company list sourced from MyVisaJobs FY2025 H1B LCA data (same DOL source as
+H1BGrader). Tier-1/2/3 sets used for scoring bonus. Separate hard-excluded set covers
+body shops and staffing firms (Cognizant, TCS, Infosys, HCL, Capgemini, LTIMindtree,
+Wipro, Tech Mahindra, Mphasis, Compunnel, Kforce, CGI, Virtusa, Randstad, Hexaware,
+Synechron, Persistent Systems) — filtered before scoring, not just at display time.
+
 ### `src/intelligence/company_researcher.py` *(Phase 9)*
 Uses Brave Search MCP and Fetch MCP to research each company before scoring.
 Returns a company signal dict: health score, layoff risk, hiring momentum.

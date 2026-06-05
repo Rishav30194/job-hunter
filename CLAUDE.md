@@ -50,3 +50,4 @@ streamlit run dashboard/app.py  # dashboard on :8501
 - Follow the phase order in `docs/implementation-phases.md` exactly — do not skip ahead.
 - Before writing any file, state which phase and task it belongs to.
 - After writing a file, show the test command from the phase doc and wait for the user to confirm it passes before continuing.
+- **Never assume.** If any value, list, API behaviour, package name, or fact is not verified from a primary source (official docs, live fetch, npm/PyPI registry), state it explicitly as an assumption and flag it for the user to confirm before using it in code or docs.
