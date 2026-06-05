@@ -75,8 +75,7 @@ TARGET
 """
 
 # ---------------------------------------------------------------------------
-# Scoring rubric guidance — embedded in system prompt so Claude applies it
-# consistently across all jobs in a batch.
+# Scoring rubric — embedded in system prompt for consistent per-call behaviour.
 # ---------------------------------------------------------------------------
 _RUBRIC = """
 SCORING RUBRIC (0–100)
@@ -103,7 +102,7 @@ Score by weighing these factors:
    - Tier-1: bonus; Tier-2: small bonus; Tier-3/Unknown: neutral
 
 5. COMPENSATION (if stated)
-   - ≥$150K: bonus; $100–149K: neutral; <$100K: penalise (should be rare after pre-filter)
+   - ≥$150K: bonus; $100–149K: neutral; <$100K: penalise (rare after pre-filter)
    - Not stated: neutral — do NOT penalise for missing salary
 
 6. VISA DISQUALIFICATION
@@ -114,16 +113,54 @@ Score by weighing these factors:
 
 SCORE BANDS
 90–100 : Near-perfect — Java 21/Spring Boot, senior, finance/healthcare, Tier-1, strong comp
-75–89  : Strong match — core Java skills, right seniority, decent domain
+75–89  : Strong match — core Java skills, right seniority, decent domain or company tier
 60–74  : Decent — Java present but partial stack, wrong seniority, or weak domain
-40–59  : Weak — some Java but primary focus is frontend/infra/ML, or junior/staff mismatch
+40–59  : Weak — Java secondary, primary focus is frontend/infra/ML, or seniority mismatch
 0–39   : Poor — not primarily Java backend, wrong domain, or visa disqualified
 """
 
-# Tool definition for structured output via Anthropic function calling.
-# Claude is forced to call this tool — the API rejects any non-conforming response.
-# This guarantees score is integer 0-100, visa_disqualified is boolean, etc.
-# scorer.py passes this with tool_choice={"type": "tool", "name": "score_job"}.
+# ---------------------------------------------------------------------------
+# Calibration examples — embedded in the system prompt as text, not as
+# conversation turns. This avoids tool_use message format conflicts while
+# still anchoring the scoring scale across all four score bands.
+# ---------------------------------------------------------------------------
+_CALIBRATION = """
+CALIBRATION EXAMPLES — use these to anchor your scoring scale:
+
+A) score=93, visa_disqualified=false
+   Java 21 + Spring Boot + Kafka + AWS, Senior 5+ yrs, Tier-1 Finance company,
+   $160–210K, visa sponsorship explicitly available.
+   Why 93: near-perfect stack + seniority + domain + tier + comp alignment.
+
+B) score=80, visa_disqualified=false
+   Java/Spring Boot microservices, Senior, Tier-2 tech company (e.g. Stripe),
+   $140–160K, no specific finance/healthcare domain mentioned.
+   Why 80: strong core match, right seniority, good comp — docked for no domain
+   bonus and Tier-2 vs Tier-1.
+
+C) score=65, visa_disqualified=false
+   Java/Spring Boot, Senior, Tier-3 IT services company, $110–130K,
+   description thin on advanced skills (no Kafka/cloud specifics mentioned).
+   Why 65: Java/Spring Boot present, acceptable seniority and comp — docked for
+   Tier-3, weak domain, and lack of advanced stack signals.
+
+D) score=52, visa_disqualified=false
+   Python (Django) primary backend with some legacy Java services, Senior,
+   Unknown company, $120–140K, no domain bonus.
+   Why 52: Java secondary — candidate would be hired as a Python engineer.
+   Seniority and comp are fine but stack fit is poor.
+
+E) score=0, visa_disqualified=true
+   Node.js/React primary, "must be authorized to work in the US without
+   sponsorship now or in the future."
+   Why 0: explicit visa rejection overrides everything. Stack also wrong.
+"""
+
+# ---------------------------------------------------------------------------
+# Tool definition — enforces output schema at the API level.
+# scorer.py passes this with tool_choice=forced so the API rejects any
+# response that does not call score_job with conforming arguments.
+# ---------------------------------------------------------------------------
 SCORING_TOOL: dict = {
     "name": "score_job",
     "description": (
@@ -158,93 +195,33 @@ SCORING_TOOL: dict = {
     },
 }
 
-# Few-shot examples ground Claude's scoring scale and format.
-# Using assistant-prefill style: each example is a (user, assistant) pair.
-_EXAMPLES: list[tuple[str, str]] = [
-    # Example 1 — near-perfect match
-    (
-        """\
-Title: Senior Software Engineer – Payments
-Company: JPMorgan Chase (Tier: Tier-1)
-Location: New York, NY | Work type: Hybrid
-Salary: $160,000 - $210,000/year (USD)
-
-Job Description:
-Design and build high-throughput payment processing microservices in Java 17/21
-and Spring Boot. Work with Kafka for event-driven transaction pipelines. 5+ years
-Java backend experience required. AWS, PostgreSQL, and CI/CD familiarity a plus.
-Finance domain knowledge helpful. Visa sponsorship available for qualified candidates.""",
-        '{"score": 93, "reasoning": "Near-perfect tech match: Java 21, Spring Boot, Kafka, AWS, PostgreSQL all align directly with the candidate\'s core stack. Senior level with 5+ years matches target seniority. Finance/payments domain is the candidate\'s strongest domain preference. Tier-1 company with strong compensation. Visa sponsorship explicitly available.", "visa_disqualified": false}',
-    ),
-    # Example 2 — visa disqualified
-    (
-        """\
-Title: Senior Backend Engineer
-Company: Acme Corp (Tier: Unknown)
-Location: Remote | Work type: Remote
-Salary: Not stated
-
-Job Description:
-Build scalable Node.js and React services. We are looking for engineers with 4+
-years of JavaScript/TypeScript experience. Must be authorized to work in the US
-without sponsorship now or in the future. PostgreSQL and AWS experience a plus.""",
-        '{"score": 0, "reasoning": "Visa disqualified: description explicitly states \'must be authorized to work in the US without sponsorship\'. Additionally, the role is primarily Node.js/React — not a Java backend position — which would have resulted in a low score regardless.", "visa_disqualified": true}',
-    ),
-    # Example 3 — decent but weak tech match
-    (
-        """\
-Title: Software Engineer
-Company: Startup Inc (Tier: Unknown)
-Location: San Francisco, CA | Work type: Onsite
-Salary: $120,000 - $140,000/year (USD)
-
-Job Description:
-Join our platform team building internal tools. We use Python (Django) as our
-primary backend, with some Java services maintained by the team. 3-5 years
-experience. No specific visa sponsorship policy mentioned.""",
-        '{"score": 52, "reasoning": "Java is present but secondary — Python/Django is the primary stack, which is a poor match for a Java specialist. Seniority and compensation are acceptable. Unknown company tier and no domain bonus. Would require the candidate to shift away from their core expertise.", "visa_disqualified": false}',
-    ),
-]
-
 
 def build_system_prompt() -> str:
-    """Return the system prompt with resume and rubric baked in.
+    """Return the system prompt with resume, rubric, and calibration examples baked in.
 
-    Sent once per API call and eligible for Anthropic prompt caching.
-    Output structure is enforced by SCORING_TOOL (function calling), not by
-    this prompt — so no output format instructions are needed here.
-    Few-shot examples are injected separately via get_few_shot_messages().
+    Sent once per API call. scorer.py wraps this in a cache_control content block
+    so Anthropic caches it across the batch — the ~1,400 token prompt is only
+    billed once per cache window rather than once per job.
     """
     return (
         "You are a precise job-match scorer for a specific candidate. "
         "Score each job 0–100 by calling the score_job tool.\n\n"
         f"CANDIDATE PROFILE:\n{_RESUME}\n\n"
-        f"{_RUBRIC}"
+        f"{_RUBRIC}\n\n"
+        f"{_CALIBRATION}"
     )
-
-
-def get_few_shot_messages() -> list[dict]:
-    """Return few-shot (user, assistant) message pairs to prepend before the real job.
-
-    These anchor Claude's scoring scale and output format, reducing hallucination
-    and format drift across a batch of jobs.
-    """
-    messages = []
-    for user_text, assistant_text in _EXAMPLES:
-        messages.append({"role": "user", "content": user_text})
-        messages.append({"role": "assistant", "content": assistant_text})
-    return messages
 
 
 def build_user_prompt(job: dict) -> str:
     """Return the user prompt for a single job.
 
-    Truncates description to 1,500 characters to keep Haiku token costs low
-    while retaining enough signal for accurate scoring.
+    Truncates description to 3,000 characters — long enough to capture visa
+    rejection phrases and tech stack details that often appear late in JDs,
+    while keeping per-job token cost low for Haiku.
     """
     description = job.get("description") or ""
-    if len(description) > 1500:
-        description = description[:1500] + "... [truncated]"
+    if len(description) > 3000:
+        description = description[:3000] + "... [truncated]"
 
     salary = job.get("salary_text") or "Not stated"
     tier = job.get("_tier_label") or "Unknown"
