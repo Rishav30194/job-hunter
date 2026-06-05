@@ -37,7 +37,7 @@ npx -y @modelcontextprotocol/server-memory --version
 ### Tasks
 - [x] `data/companies.py` — Tier-1/Tier-2/Tier-3 target company list
 - [x] `src/ingestion/fetcher.py` — jobspy wrapper, visa/salary/age/company filters
-- [ ] `src/ingestion/deduplicator.py` — SHA-256 hash dedup against Postgres
+- [x] `src/ingestion/deduplicator.py` — SHA-256 hash dedup against Postgres
 
 ### Testing
 ```bash
@@ -60,7 +60,7 @@ jobs = fetch_jobs()
 new1 = filter_new(jobs, session)
 print(f'Round 1 new: {len(new1)}')
 new2 = filter_new(jobs, session)
-print(f'Round 2 new (should be 0): {len(new2)}')
+print(f'Round 2 new (equals round 1 — no DB writes in test; 0 only after pipeline persists): {len(new2)}')
 "
 ```
 
@@ -398,8 +398,8 @@ curl http://localhost:8501                 # dashboard responds 200
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 1 | Foundation | ✅ Complete |
-| 2 | Ingestion | 🟡 In Progress |
-| 3 | LLM Scoring | ⬜ Not Started |
+| 2 | Ingestion | ✅ Complete |
+| 3 | LLM Scoring | 🟡 In Progress |
 | 4 | Routing & Notifications | ⬜ Not Started |
 | 5 | Scheduler | ⬜ Not Started |
 | 6 | Dashboard | ⬜ Not Started |

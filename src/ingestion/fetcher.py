@@ -97,22 +97,29 @@ def _normalize(df: pd.DataFrame) -> list[dict]:
     for _, row in df.iterrows():
         salary_min, salary_max, salary_text = _extract_salary(row)
         work_type = _extract_work_type(row)
-        url = row.get("job_url") or row.get("job_url_direct")
+        url = _str(row.get("job_url")) or _str(row.get("job_url_direct"))
 
         jobs.append({
-            "title": row.get("title") or "",
-            "company": row.get("company") or "",
-            "location": row.get("location"),
+            "title": _str(row.get("title")),
+            "company": _str(row.get("company")),
+            "location": _str(row.get("location")) or None,
             "work_type": work_type,
             "salary_min": salary_min,
             "salary_max": salary_max,
             "salary_text": salary_text,
-            "description": row.get("description"),
-            "url": str(url) if url and url == url else None,  # drop NaN
-            "source": row.get("site"),
+            "description": _str(row.get("description")) or None,
+            "url": url or None,
+            "source": _str(row.get("site")) or None,
             "posted_at": _to_datetime(row.get("date_posted")),
         })
     return jobs
+
+
+def _str(value) -> str:
+    """Convert value to str, treating None and NaN as empty string."""
+    if value is None or value != value:  # NaN: float NaN != float NaN
+        return ""
+    return str(value)
 
 
 def _apply_filters(jobs: list[dict]) -> list[dict]:
