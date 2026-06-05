@@ -44,6 +44,19 @@ streamlit run dashboard/app.py  # dashboard on :8501
 - Hard excluded company: Infosys / Infosys Limited only (current employer) — all other companies including staffing firms are eligible
 - Visa filter: skip only if job description explicitly rejects sponsorship
 
+## New Session Startup Order
+When starting a fresh session, follow this exact order before touching any code:
+
+1. **`CLAUDE.md`** — you are here. Read constraints and rules first.
+2. **`docs/implementation-phases.md`** — find the current phase, identify the first unchecked task. This tells you exactly where to pick up.
+3. **`docs/ARCHITECTURE.md`** — understand the system design and how the current task fits.
+4. **`docs/PROJECT_OVERVIEW.md`** — candidate profile, company tiers, automation goals.
+5. **`git log --oneline -10`** — see what was last committed to understand actual progress vs. docs.
+6. **`ls src/ dashboard/ data/ config/`** — verify which files physically exist vs. what phases claim is done.
+7. State out loud: current phase, last completed task, next task to build — then wait for user confirmation before writing any code.
+
+---
+
 ## Development Rules
 - **One file at a time.** Write one class/module, stop, verify it compiles and the unit test passes, then move to the next.
 - Never write multiple source files in a single response.
