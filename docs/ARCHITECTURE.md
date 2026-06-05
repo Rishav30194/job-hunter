@@ -113,10 +113,8 @@ skips reapplying to companies that rejected within the past 90 days.
 
 ### `data/companies.py`
 Three-tier company list sourced from MyVisaJobs FY2025 H1B LCA data (same DOL source as
-H1BGrader). Tier-1/2/3 sets used for scoring bonus. Separate hard-excluded set covers
-body shops and staffing firms (Cognizant, TCS, Infosys, HCL, Capgemini, LTIMindtree,
-Wipro, Tech Mahindra, Mphasis, Compunnel, Kforce, CGI, Virtusa, Randstad, Hexaware,
-Synechron, Persistent Systems) — filtered before scoring, not just at display time.
+H1BGrader). Tier-1/2/3 sets used for scoring bonus. Hard-excluded set contains only
+Infosys / Infosys Limited (current employer) — all other companies are eligible.
 
 ### `src/intelligence/company_researcher.py` *(Phase 9)*
 Uses Brave Search MCP and Fetch MCP to research each company before scoring.

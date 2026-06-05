@@ -41,7 +41,7 @@ streamlit run dashboard/app.py  # dashboard on :8501
 - Never hardcode secrets — all config via `.env`
 - `FETCH_INTERVAL_HOURS` default: 6
 - `JOB_MAX_AGE_HOURS` default: 48 (no stale listings)
-- Hard excluded company: Infosys Limited
+- Hard excluded company: Infosys / Infosys Limited only (current employer) — all other companies including staffing firms are eligible
 - Visa filter: skip only if job description explicitly rejects sponsorship
 
 ## Development Rules

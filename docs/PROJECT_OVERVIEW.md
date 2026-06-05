@@ -52,10 +52,8 @@ to mid-match jobs — all without manual intervention.
 - **Regional Banking:** Truist Financial, PNC Financial, Fifth Third Bank, KeyCorp, Raymond James, LPL Financial, Regions Financial
 - **Other Tech:** Walmart Global Tech, Target Tech, Wayfair, Chewy, Rivian, Epic Systems, Veeva Systems, Tyler Technologies
 
-**Hard Excluded** *(body shops / staffing — filtered before scoring)*
-Cognizant, Tata Consultancy Services (TCS), Infosys, HCL America, Capgemini, LTIMindtree,
-Wipro, Tech Mahindra, Mphasis, Compunnel, Kforce, CGI, Virtusa, Randstad Digital, Hexaware,
-Synechron, Persistent Systems, Infinite Computer Solutions, Skilltune Technologies, Grandison Management
+**Hard Excluded**
+- Infosys / Infosys Limited — current employer, do not apply
 
 ## What Gets Automated
 
