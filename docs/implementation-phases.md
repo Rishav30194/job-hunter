@@ -10,12 +10,12 @@
 - [x] `.env.example`
 - [x] `CLAUDE.md`, `PROJECT_OVERVIEW.md`, `ARCHITECTURE.md`
 - [x] `.mcp.json` — all MCP servers registered
-- [ ] `config/settings.py` — pydantic-settings BaseSettings
-- [ ] `src/db/models.py` — Job, Application SQLAlchemy models
-- [ ] `src/db/session.py` — engine, SessionLocal, init_db()
-- [ ] `alembic.ini` + `migrations/env.py`
-- [ ] Run `alembic revision --autogenerate -m "initial"` + `alembic upgrade head`
-- [ ] All `__init__.py` files
+- [x] `config/settings.py` — pydantic-settings BaseSettings
+- [x] `src/db/models.py` — Job, Application SQLAlchemy models
+- [x] `src/db/session.py` — engine, SessionLocal, init_db()
+- [x] `alembic.ini` + `migrations/env.py`
+- [x] Run `alembic revision --autogenerate -m "initial"` + `alembic upgrade head`
+- [x] All `__init__.py` files
 
 ### Testing
 ```bash
@@ -397,8 +397,8 @@ curl http://localhost:8501                 # dashboard responds 200
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1 | Foundation | 🟡 In Progress |
-| 2 | Ingestion | ⬜ Not Started |
+| 1 | Foundation | ✅ Complete |
+| 2 | Ingestion | 🟡 In Progress |
 | 3 | LLM Scoring | ⬜ Not Started |
 | 4 | Routing & Notifications | ⬜ Not Started |
 | 5 | Scheduler | ⬜ Not Started |
