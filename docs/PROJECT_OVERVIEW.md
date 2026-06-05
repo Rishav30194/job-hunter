@@ -15,7 +15,7 @@ to mid-match jobs — all without manual intervention.
 | Goal | Mechanism |
 |------|-----------|
 | Zero stale listings | Hard 48-hour cutoff on all fetched jobs |
-| Minimize human time | Auto-apply for score 60–84; human only sees score ≥ 85 |
+| Minimize human time | Auto-apply for score 75–84 (cap 20/day); human reviews top 5 per run (score ≥ 85) |
 | Maximum coverage | 5 search terms × Indeed + Google Jobs per run (Google aggregates Glassdoor/ZipRecruiter/LinkedIn) |
 | Smart filtering | Claude Haiku scores each job against actual resume |
 | Visa safety | Explicit "no sponsorship" text → auto-discard |
@@ -65,7 +65,7 @@ to mid-match jobs — all without manual intervention.
 | Visa sponsorship check | ✅ Fully |
 | AI scoring (0–100) | ✅ Fully |
 | Telegram alerts (high match) | ✅ Fully |
-| Auto-apply (score 60–84) | ✅ Fully (Playwright) |
+| Auto-apply (score 75–84, cap 20/day) | ✅ Fully (Playwright, Indeed Easy Apply only) |
 | Recruiter tracing | ✅ Fully (LinkedIn MCP) |
 | Outreach message drafting | ✅ Claude-generated |
 | Final approval for score ≥ 85 | 🙋 Human (one click in dashboard) |

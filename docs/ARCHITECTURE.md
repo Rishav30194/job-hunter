@@ -39,9 +39,9 @@
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                      DECISION ROUTER                               │   │
-│  │  score ≥ 85  ──► Human Review Queue (dashboard + Telegram)        │   │
-│  │  score 60–84 ──► Auto-Apply Queue (Playwright MCP)               │   │
-│  │  score < 60  ──► Archived                                         │   │
+│  │  score ≥ 85  ──► Human Review Queue (cap: 5/run; overflow → apply) │   │
+│  │  score 75–84 ──► Auto-Apply Queue (cap: 20/day; overflow → arch.) │   │
+│  │  score < 75  ──► Archived                                         │   │
 │  │  disqualified ──► Discarded                                       │   │
 │  └──────┬──────────────────────────┬─────────────────────────────────┘   │
 │         │                          │                                      │
@@ -50,7 +50,7 @@
 │  │  LinkedIn MCP       │  │  Playwright MCP (Microsoft, 33K stars)  │    │
 │  │  Find hiring mgr /  │  │  LLM drives browser via accessibility   │    │
 │  │  tech recruiter     │  │  snapshots — survives UI changes        │    │
-│  │  Claude Sonnet      │  │  Daily cap: 10/day · cover via Claude   │    │
+│  │  Claude Sonnet      │  │  Daily cap: 20/day · cover via Claude   │    │
 │  │  drafts outreach    │  └─────────────────────────────────────────┘    │
 │  └──────┬──────────────┘                                                 │
 │         │                                                                │
@@ -126,8 +126,8 @@ Claude Haiku scoring (0–100) with resume baked into system prompt.
 Enriched with company intelligence signal from Phase 9. Retry via tenacity.
 
 ### `src/routing/router.py`
-Routes scored jobs into four buckets. Checks today's auto-apply count vs daily cap.
-Overflow from auto-apply cap routes to human review queue, not dropped.
+Routes scored jobs into four buckets, sorted by score descending so caps fill highest-first.
+Overflow from human_review cap spills to queued_apply; overflow from auto-apply cap is archived.
 
 ### `src/apply/playwright_apply.py` *(Phase 7 — uses Playwright MCP)*
 Calls Playwright MCP tools instead of raw Playwright Python. Claude navigates the
@@ -228,7 +228,7 @@ CREATE TABLE pipeline_runs (
 ## Data Flow (Full Pipeline)
 
 ```
-fetch_jobs()                         ← jobspy (LinkedIn/Indeed/Glassdoor/Zip)
+fetch_jobs()                         ← jobspy (Indeed/Google Jobs)
     └─► pre-filter (age/salary/visa/company)
          └─► filter_new()            ← SHA-256 dedup + Memory MCP rejection guard
               └─► research_companies() ← Brave Search MCP + Fetch MCP

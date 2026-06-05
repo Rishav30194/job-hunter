@@ -83,8 +83,8 @@ Adding a new secret: add to `.env.example` → `config/settings.py` → this tab
 |---------|-------|
 | Fetch interval | 6 hours |
 | Max job age | 48 hours |
-| Score ≥ 85 | Human review queue |
-| Score 60–84 | Auto-apply (capped at 10/day) |
-| Score < 60 | Archived |
+| Score ≥ 85 | Human review queue (capped at 5/run) |
+| Score 75–84 | Auto-apply (capped at 20/day) |
+| Score < 75 | Archived |
 | Visa filter | Skip only if JD explicitly rejects sponsorship |
 | Hard excluded company | Infosys / Infosys Limited (current employer) |
