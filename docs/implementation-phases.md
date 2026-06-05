@@ -36,7 +36,7 @@ npx -y @modelcontextprotocol/server-memory --version
 
 ### Tasks
 - [x] `data/companies.py` — Tier-1/Tier-2/Tier-3 target company list
-- [ ] `src/ingestion/fetcher.py` — jobspy wrapper, visa/salary/age/company filters
+- [x] `src/ingestion/fetcher.py` — jobspy wrapper, visa/salary/age/company filters
 - [ ] `src/ingestion/deduplicator.py` — SHA-256 hash dedup against Postgres
 
 ### Testing
