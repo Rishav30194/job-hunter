@@ -83,6 +83,12 @@ When starting a fresh session, follow this exact order before touching any code:
 
 ---
 
+## Before Every Commit
+Before running `git commit`, always:
+1. Update `docs/implementation-phases.md` — check off completed tasks, update the Progress Summary table.
+2. Update any other docs affected by the change (e.g. `ARCHITECTURE.md` if a component changed, `PROJECT_OVERVIEW.md` if scope changed).
+3. Stage the updated docs in the same commit as the code.
+
 ## Development Rules
 - **One file at a time.** Write one class/module, stop, verify it compiles and the unit test passes, then move to the next.
 - Never write multiple source files in a single response.
