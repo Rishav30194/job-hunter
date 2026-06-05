@@ -1,7 +1,7 @@
 # Implementation Phases
 
 ## Phase 1 — Foundation
-> DB models, config, project skeleton. Nothing runs yet but everything compiles.
+> DB models, config, MCP config, project skeleton. Nothing runs yet but everything compiles.
 
 ### Tasks
 - [x] Create project directory structure
@@ -9,6 +9,7 @@
 - [x] `Dockerfile` + `docker-compose.yml`
 - [x] `.env.example`
 - [x] `CLAUDE.md`, `PROJECT_OVERVIEW.md`, `ARCHITECTURE.md`
+- [x] `.mcp.json` — all MCP servers registered
 - [ ] `config/settings.py` — pydantic-settings BaseSettings
 - [ ] `src/db/models.py` — Job, Application SQLAlchemy models
 - [ ] `src/db/session.py` — engine, SessionLocal, init_db()
@@ -22,6 +23,10 @@ docker compose up -d postgres
 alembic upgrade head
 python -c "from src.db.session import init_db; init_db(); print('DB OK')"
 psql $DATABASE_URL -c "\dt"   # should show jobs, applications tables
+
+# Verify MCP servers resolve (requires Node + Docker)
+npx @playwright/mcp@latest --version
+npx -y @modelcontextprotocol/server-memory --version
 ```
 
 ---
@@ -45,7 +50,7 @@ for j in jobs[:3]:
     print(j['title'], '|', j['company'], '|', j.get('salary_text'))
 "
 
-# Test deduplication (run twice, second should return 0 new)
+# Test deduplication (run twice — second should return 0 new)
 python -c "
 from src.db.session import get_session
 from src.ingestion.fetcher import fetch_jobs
@@ -72,7 +77,6 @@ print(f'Round 2 new (should be 0): {len(new2)}')
 
 ### Testing
 ```bash
-# Score a single synthetic job
 python -c "
 from src.scoring.scorer import score_jobs
 test_jobs = [
@@ -115,7 +119,7 @@ Expected: JPMorgan scores 85+, Acme Corp is disqualified.
 
 ### Testing
 ```bash
-# Test router with synthetic scored jobs
+# Test router bucket assignment
 python -c "
 from src.db.session import get_session
 from src.routing.router import route_jobs
@@ -131,17 +135,14 @@ for bucket, items in routes.items():
     print(f'{bucket}: {len(items)}')
 "
 
-# Test Telegram notification (sends real message)
+# Test Telegram (sends real message)
 python -c "
 from src.notifications.telegram import send_message
 send_message('Test alert from job-hunter pipeline.')
 "
 
-# End-to-end pipeline dry run (no auto-apply yet)
-python -c "
-from src.pipeline import run_pipeline
-run_pipeline()
-"
+# End-to-end pipeline dry run
+python -c "from src.pipeline import run_pipeline; run_pipeline()"
 ```
 
 ---
@@ -159,8 +160,7 @@ run_pipeline()
 FETCH_INTERVAL_HOURS=0.01 python src/main.py
 # Should log "Pipeline started" within ~36 seconds, then again
 
-# Verify clean shutdown on SIGINT
-# Ctrl+C should log graceful shutdown, not traceback
+# Ctrl+C should log graceful shutdown — no traceback
 ```
 
 ---
@@ -172,11 +172,11 @@ FETCH_INTERVAL_HOURS=0.01 python src/main.py
 - [ ] `dashboard/app.py`
   - [ ] Metrics row: Scanned / High Match / Applied / Outreach / Interviews
   - [ ] Tab: Human Queue — table with Approve / Skip buttons
-  - [ ] Tab: Applied — application status tracker
-  - [ ] Tab: All Jobs — searchable full table with filters
-  - [ ] Tab: Analytics — score distribution histogram, applications over time chart
-- [ ] Approve button writes `status=approved`, creates Application row
-- [ ] Skip button writes `status=skipped`
+  - [ ] Tab: Applied — application status tracker with funnel view
+  - [ ] Tab: All Jobs — searchable/filterable full table
+  - [ ] Tab: Analytics — score distribution histogram, applications over time
+- [ ] Approve button → `status=approved`, creates Application row
+- [ ] Skip button → `status=skipped`
 
 ### Testing
 ```bash
@@ -184,32 +184,38 @@ streamlit run dashboard/app.py
 # Open http://localhost:8501
 # Verify:
 # - Metrics cards show correct counts from DB
-# - Human Queue tab shows only status=human_review jobs
-# - Approve button changes status and moves row out of queue on rerun
+# - Human Queue shows only status=human_review jobs
+# - Approve button moves row out of queue on rerun
 # - Applied tab shows submitted applications
-# - Charts render without error on empty and populated DB
+# - Charts render on both empty and populated DB
 ```
 
 ---
 
-## Phase 7 — Playwright Auto-Apply
-> Headless browser auto-applies to queued_apply jobs via LinkedIn Easy Apply.
+## Phase 7 — Auto-Apply via Playwright MCP
+> Replace raw Playwright code with Microsoft Playwright MCP for resilient LLM-driven browser automation.
+
+**Why Playwright MCP over raw Playwright:**
+Playwright MCP drives the browser via accessibility snapshots. Claude reads the page structure
+intelligently and fills forms — no CSS selectors, no breaks when LinkedIn updates its UI.
 
 ### Tasks
+- [ ] Install: `npx @playwright/mcp@latest` (verify in `.mcp.json`)
 - [ ] `src/apply/playwright_apply.py`
-  - [ ] LinkedIn login (reuse session cookie where possible)
-  - [ ] Navigate to job URL
-  - [ ] Detect and click "Easy Apply" button
-  - [ ] Fill multi-step form (contact info, resume upload, experience questions)
-  - [ ] Submit and confirm
-  - [ ] On failure: mark job status=apply_failed, log reason
+  - [ ] Call Playwright MCP tools: `browser_navigate`, `browser_click`, `browser_type`, `browser_snapshot`
+  - [ ] LinkedIn login (session cookie reuse where possible)
+  - [ ] Detect Easy Apply button via snapshot, not selector
+  - [ ] Multi-step form: Claude reads each step, fills intelligently
+  - [ ] Upload resume from local path
+  - [ ] Submit and confirm success/failure
+  - [ ] On failure: `status=apply_failed`, log reason, Telegram alert
 - [ ] Integrate into `pipeline.py` after routing
-- [ ] Rate limit: max 20/day enforced in router
+- [ ] Daily cap: 20/day enforced in router
 
 ### Testing
 ```bash
-# Test against a known Easy Apply job URL (paste a real LinkedIn Easy Apply URL)
-python -c "
+# Test with HEADLESS=false to visually inspect flow
+PLAYWRIGHT_HEADLESS=false python -c "
 from src.apply.playwright_apply import apply_to_job
 result = apply_to_job({
     'url': 'https://www.linkedin.com/jobs/view/XXXXXXXXX',
@@ -219,79 +225,187 @@ result = apply_to_job({
 })
 print('Result:', result)
 "
-# Run with HEADLESS=false to visually inspect the browser flow
-PLAYWRIGHT_HEADLESS=false python -c "..."
 ```
-> ⚠️ Always test against a non-critical LinkedIn account first. Confirm Easy Apply completes before enabling auto-apply on real jobs.
+> ⚠️ Always test on a known Easy Apply posting with HEADLESS=false first.
+> Confirm submission before enabling on real jobs.
 
 ---
 
-## Phase 8 — LinkedIn Recruiter Tracer
-> For every high-match job, find the hiring manager or tech recruiter on LinkedIn and draft outreach.
+## Phase 8 — Recruiter Tracer + Gmail Feedback Loop
+> Find recruiters via LinkedIn MCP and detect their replies via Gmail MCP.
 
 ### Tasks
-- [ ] Install and configure `linkedin-mcp-server` (Premium account required)
-- [ ] `src/recruiter/tracer.py`
-  - [ ] Search LinkedIn for people at company with recruiter/hiring manager titles
-  - [ ] Pick best match (most relevant title, most connected)
-  - [ ] Draft outreach message via Claude Sonnet (personalized per JD)
-  - [ ] Store recruiter info and message draft in DB
+- [ ] **LinkedIn MCP** — recruiter tracing
+  - [ ] `src/recruiter/tracer.py`
+  - [ ] Search company employees with "recruiter" / "hiring manager" / "talent" titles
+  - [ ] Rank by relevance (tech recruiting > general HR)
+  - [ ] Claude Sonnet drafts personalized outreach from JD context
+  - [ ] Store recruiter info + message draft in DB
   - [ ] Dashboard shows draft for human approval before send
+
+- [ ] **Gmail MCP** — reply detection
+  - [ ] `src/feedback/gmail_monitor.py`
+  - [ ] Poll inbox every pipeline run
+  - [ ] Match sender domain → applied company
+  - [ ] On match: update job `status=phone_screen`, send Telegram alert
+  - [ ] Store reply snippet in job notes field
 
 ### Testing
 ```bash
+# Recruiter trace
 python -c "
 from src.recruiter.tracer import trace_recruiter
-result = trace_recruiter({
-    'company': 'JPMorgan Chase',
-    'title': 'Senior Software Engineer',
-    'id': 'test-id-001',
-})
+result = trace_recruiter({'company': 'JPMorgan Chase', 'title': 'Senior Software Engineer', 'id': 'test-001'})
 print('Recruiter:', result.get('recruiter_name'))
-print('LinkedIn:', result.get('recruiter_linkedin_url'))
-print('Draft message preview:', result.get('outreach_message', '')[:200])
+print('Draft:', result.get('outreach_message', '')[:200])
+"
+
+# Gmail monitor (verify OAuth first via .env)
+python -c "
+from src.feedback.gmail_monitor import check_recruiter_replies
+replies = check_recruiter_replies()
+print(f'Detected {len(replies)} recruiter replies')
 "
 ```
 
 ---
 
-## Phase 9 — VPS Deployment
-> Deploy the full stack to a cloud VPS and run 24/7.
+## Phase 9 — Company Intelligence Layer
+> Research each company via Brave Search MCP before scoring to improve accuracy.
+
+**Why this matters:** A perfect Java + Spring Boot JD at a company mid-layoff should score lower.
+A company that just raised a Series C and is actively hiring Java engineers should score higher.
 
 ### Tasks
-- [ ] Provision VPS (Hetzner CX21 or equivalent, Ubuntu 22.04)
-- [ ] Install Docker + Docker Compose
-- [ ] Clone repo, create `.env` with production values
-- [ ] `docker compose up -d` — all services
-- [ ] Verify dashboard accessible at `http://<vps-ip>:8501`
-- [ ] Set up Nginx reverse proxy + SSL (optional, for public dashboard access)
-- [ ] Verify Telegram alerts fire on first pipeline run
-- [ ] Monitor logs: `docker compose logs -f scheduler`
+- [ ] Get Brave Search API key (free tier: 2,000 queries/month)
+- [ ] `src/intelligence/company_researcher.py`
+  - [ ] Brave Search MCP: query `"{company} layoffs 2026"`, `"{company} hiring engineers"`
+  - [ ] Fetch MCP: pull company Glassdoor page for rating trend
+  - [ ] Parse signals: layoff risk · hiring momentum · funding stage · Glassdoor score
+  - [ ] Return company health score (0–10) injected into scoring prompt
+- [ ] Update `src/scoring/prompts.py` to accept company signal in prompt
+- [ ] Update `src/scoring/scorer.py` to call researcher before scoring
 
 ### Testing
 ```bash
-# From VPS:
-docker compose ps                          # all services Up
-docker compose logs scheduler | tail -50   # pipeline ran successfully
-curl http://localhost:8501                 # dashboard responds
+python -c "
+from src.intelligence.company_researcher import research_company
+signal = research_company('Stripe')
+print('Health score:', signal['health_score'])
+print('Summary:', signal['summary'])
+"
+# Expect: positive signals for active hiring, no recent layoffs
+```
 
-# From local browser:
-# Open http://<vps-ip>:8501 — dashboard loads with real data
-# Send a Telegram message from bot — confirms alerts are live
+---
+
+## Phase 10 — Interview Calendar Automation
+> Auto-create Google Calendar prep events when an interview is confirmed.
+
+### Tasks
+- [ ] Set up Google OAuth (Client ID + Secret + Refresh Token in `.env`)
+- [ ] `src/calendar/interview_scheduler.py`
+  - [ ] Google Calendar MCP: `create_event` with title, date, description
+  - [ ] Event body: JD summary + company research notes + recruiter name
+  - [ ] Reminder: 24h before interview
+  - [ ] Store `calendar_event_id` in applications table
+- [ ] Trigger from dashboard: when user sets status → `interview`
+
+### Testing
+```bash
+python -c "
+from src.calendar.interview_scheduler import create_prep_event
+event_id = create_prep_event({
+    'title': 'Senior Software Engineer',
+    'company': 'Goldman Sachs',
+    'interview_date': '2026-06-15T10:00:00',
+    'recruiter_name': 'Jane Smith',
+})
+print('Calendar event ID:', event_id)
+"
+# Open Google Calendar — verify event appears with correct details
+```
+
+---
+
+## Phase 11 — Memory + Notion Sync
+> Persistent agent memory for repeat-apply prevention and Notion Kanban mirror.
+
+### Tasks
+- [ ] **Memory MCP** — rejection tracking
+  - [ ] `src/memory/manager.py`
+  - [ ] On rejection: write to Memory MCP `{company}: rejected {date}, cooldown 90 days`
+  - [ ] At dedup stage: check Memory MCP before processing — skip companies in cooldown
+  - [ ] Also track: recruiters messaged (prevent duplicate outreach)
+
+- [ ] **Notion MCP** — Kanban mirror
+  - [ ] Create Notion database with columns: Applied · Phone Screen · Interview · Offer · Rejected
+  - [ ] `src/notion/sync.py` — after each run, sync Postgres → Notion
+  - [ ] Each job card: title, company, score, salary, URL, applied date
+  - [ ] Run as last step in `pipeline.py`
+
+### Testing
+```bash
+# Test memory write/read
+python -c "
+from src.memory.manager import record_rejection, is_in_cooldown
+record_rejection('Goldman Sachs')
+print('In cooldown:', is_in_cooldown('Goldman Sachs'))   # True
+print('In cooldown:', is_in_cooldown('JPMorgan Chase'))  # False
+"
+
+# Test Notion sync (verify NOTION_API_KEY set)
+python -c "
+from src.notion.sync import sync_pipeline
+sync_pipeline()
+"
+# Open Notion — verify cards appear in correct columns
+```
+
+---
+
+## Phase 12 — VPS Deployment
+> Deploy the full stack to a cloud VPS and run 24/7.
+
+### Tasks
+- [ ] Provision VPS (Hetzner CX21, Ubuntu 22.04 — ~$5/mo)
+- [ ] Install Docker + Docker Compose + Node.js (for MCP servers)
+- [ ] Clone repo, fill `.env` with all production values
+- [ ] `docker compose up -d` — all services
+- [ ] Verify dashboard at `http://<vps-ip>:8501`
+- [ ] Set up Nginx reverse proxy + SSL (Certbot) for public dashboard access
+- [ ] Verify Telegram alerts fire on first pipeline run
+- [ ] Set up log rotation: `docker compose logs` to file with weekly rotation
+
+### Testing
+```bash
+# From VPS
+docker compose ps                          # all services: Up
+docker compose logs scheduler | tail -50   # pipeline ran, no errors
+curl http://localhost:8501                 # dashboard responds 200
+
+# From local browser
+# Open http://<vps-ip>:8501 → dashboard loads with real data
+# Check Telegram — run summary received
+# Check Notion board — jobs appear in Applied column
+# Check Gmail — reply detection fires on test email
 ```
 
 ---
 
 ## Progress Summary
 
-| Phase | Status |
-|-------|--------|
-| 1 — Foundation | 🟡 In Progress |
-| 2 — Ingestion | ⬜ Not Started |
-| 3 — LLM Scoring | ⬜ Not Started |
-| 4 — Routing & Notifications | ⬜ Not Started |
-| 5 — Scheduler | ⬜ Not Started |
-| 6 — Dashboard | ⬜ Not Started |
-| 7 — Auto-Apply | ⬜ Not Started |
-| 8 — Recruiter Tracer | ⬜ Not Started |
-| 9 — VPS Deployment | ⬜ Not Started |
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Foundation | 🟡 In Progress |
+| 2 | Ingestion | ⬜ Not Started |
+| 3 | LLM Scoring | ⬜ Not Started |
+| 4 | Routing & Notifications | ⬜ Not Started |
+| 5 | Scheduler | ⬜ Not Started |
+| 6 | Dashboard | ⬜ Not Started |
+| 7 | Auto-Apply (Playwright MCP) | ⬜ Not Started |
+| 8 | Recruiter Tracer + Gmail Feedback | ⬜ Not Started |
+| 9 | Company Intelligence (Brave Search MCP) | ⬜ Not Started |
+| 10 | Interview Calendar (Google Calendar MCP) | ⬜ Not Started |
+| 11 | Memory + Notion Sync | ⬜ Not Started |
+| 12 | VPS Deployment | ⬜ Not Started |
