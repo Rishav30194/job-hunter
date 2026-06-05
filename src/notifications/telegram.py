@@ -1,0 +1,99 @@
+"""Telegram notification helpers for high-match alerts and pipeline run summaries."""
+
+import html
+import logging
+
+import httpx
+
+from config.settings import settings
+
+logger = logging.getLogger(__name__)
+
+_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
+_MAX_HIGH_MATCH = 10
+_MAX_MESSAGE_LEN = 4096
+_MAX_REASONING_LEN = 120
+
+
+def _e(value: object) -> str:
+    """HTML-escape a user-supplied value so it is safe inside parse_mode=HTML."""
+    return html.escape(str(value))
+
+
+def send_message(text: str) -> None:
+    """Send an HTML-formatted message to the configured Telegram chat.
+
+    Logs and swallows errors so a notification failure never crashes the pipeline.
+    """
+    url = _API_URL.format(token=settings.telegram_bot_token)
+    try:
+        resp = httpx.post(
+            url,
+            json={
+                "chat_id": settings.telegram_chat_id,
+                "text": text[:_MAX_MESSAGE_LEN],
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+    except Exception:
+        logger.exception("Telegram send failed (length=%d)", len(text))
+
+
+def send_high_match_alert(jobs: list[dict]) -> None:
+    """Send one message listing the top human-review jobs, sorted by score descending."""
+    if not jobs:
+        return
+
+    top = sorted(jobs, key=lambda j: j.get("score") or 0, reverse=True)[:_MAX_HIGH_MATCH]
+    count = len(top)
+    lines = [f"<b>{count} High-Match Job{'s' if count != 1 else ''} — Human Review Queue</b>"]
+
+    for i, job in enumerate(top, 1):
+        title = _e(job.get("title") or "Unknown")
+        company = _e(job.get("company") or "Unknown")
+        score = job.get("score", "?")
+        location = _e(job.get("location") or "Location unknown")
+        salary = _e(job.get("salary_text") or "Salary not listed")
+        url = job.get("url", "")
+        reasoning = job.get("score_reasoning", "")
+        if reasoning:
+            reasoning = _e(reasoning[:_MAX_REASONING_LEN])
+
+        parts = [f"\n{i}. <b>{title}</b> @ {company}  |  Score: {score}"]
+        parts.append(f"   {location}  ·  {salary}")
+        if url:
+            parts.append(f'   <a href="{_e(url)}">View Job</a>')
+        if reasoning:
+            parts.append(f"   <i>{reasoning}</i>")
+        lines.append("\n".join(parts))
+
+    send_message("\n".join(lines))
+
+
+def send_run_summary(stats: dict) -> None:
+    """Send a pipeline run summary with job counts for each routing bucket.
+
+    Appends an error line if the run recorded an error.
+    """
+    lines = [
+        "<b>Pipeline Run Complete</b>",
+        "",
+        (
+            f"Fetched: {stats.get('jobs_fetched', 0)}"
+            f"  |  New: {stats.get('jobs_new', 0)}"
+            f"  |  Scored: {stats.get('jobs_scored', 0)}"
+        ),
+        (
+            f"Human Review: {stats.get('human_review', 0)}"
+            f"  |  Auto-Apply: {stats.get('auto_applied', 0)}"
+            f"  |  Archived: {stats.get('archived', 0)}"
+            f"  |  Disqualified: {stats.get('disqualified', 0)}"
+        ),
+    ]
+    if stats.get("error"):
+        lines.append(f"\nError: {stats['error']}")
+
+    send_message("\n".join(lines))

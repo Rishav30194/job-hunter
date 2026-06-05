@@ -113,9 +113,9 @@ Expected: JPMorgan scores 85+, Acme Corp is disqualified.
 > Route scored jobs into queues, persist to DB, send Telegram alerts.
 
 ### Tasks
-- [ ] `src/routing/router.py` — threshold-based routing with daily auto-apply cap
-- [ ] `src/notifications/telegram.py` — high-match alert + run summary messages
-- [ ] `src/pipeline.py` — orchestrates fetch → dedup → score → route → persist → notify
+- [x] `src/routing/router.py` — threshold-based routing with daily auto-apply cap
+- [x] `src/notifications/telegram.py` — high-match alert + run summary messages
+- [x] `src/pipeline.py` — orchestrates fetch → dedup → score → route → persist → notify
 
 ### Testing
 ```bash
@@ -400,7 +400,7 @@ curl http://localhost:8501                 # dashboard responds 200
 | 1 | Foundation | ✅ Complete |
 | 2 | Ingestion | ✅ Complete |
 | 3 | LLM Scoring | ✅ Complete |
-| 4 | Routing & Notifications | 🟡 In Progress |
+| 4 | Routing & Notifications | ✅ Complete |
 | 5 | Scheduler | ⬜ Not Started |
 | 6 | Dashboard | ⬜ Not Started |
 | 7 | Auto-Apply (Playwright MCP) | ⬜ Not Started |

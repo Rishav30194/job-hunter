@@ -37,8 +37,9 @@ class Settings(BaseSettings):
     # Tunable pipeline behaviour                                           #
     # ------------------------------------------------------------------ #
     human_review_threshold: int = 85
-    auto_apply_threshold: int = 60
-    max_auto_applies_per_day: int = 10
+    auto_apply_threshold: int = 75
+    max_auto_applies_per_day: int = 20
+    max_human_review_per_run: int = 5
 
     fetch_interval_hours: int = 6
     job_max_age_hours: int = 48
