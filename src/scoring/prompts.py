@@ -120,17 +120,43 @@ SCORE BANDS
 0–39   : Poor — not primarily Java backend, wrong domain, or visa disqualified
 """
 
-_OUTPUT_FORMAT = """
-OUTPUT FORMAT
-Respond with ONLY a valid JSON object. No prose, no markdown fences, no explanation outside the JSON.
-Any deviation from this format will cause a system error.
-
-{
-  "score": <integer 0-100>,
-  "reasoning": "<2-3 sentences: what matched, what did not, the single factor that drove the score>",
-  "visa_disqualified": <true|false>
+# Tool definition for structured output via Anthropic function calling.
+# Claude is forced to call this tool — the API rejects any non-conforming response.
+# This guarantees score is integer 0-100, visa_disqualified is boolean, etc.
+# scorer.py passes this with tool_choice={"type": "tool", "name": "score_job"}.
+SCORING_TOOL: dict = {
+    "name": "score_job",
+    "description": (
+        "Submit the match score and analysis for a job listing against the candidate profile. "
+        "Always call this tool — never respond with plain text."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "score": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+                "description": "Match score 0–100 per the rubric.",
+            },
+            "reasoning": {
+                "type": "string",
+                "description": (
+                    "2–3 sentences: what matched, what did not, "
+                    "the single factor that drove the score."
+                ),
+            },
+            "visa_disqualified": {
+                "type": "boolean",
+                "description": (
+                    "True only if the job description explicitly rejects visa sponsorship. "
+                    "False if sponsorship is not mentioned at all."
+                ),
+            },
+        },
+        "required": ["score", "reasoning", "visa_disqualified"],
+    },
 }
-"""
 
 # Few-shot examples ground Claude's scoring scale and format.
 # Using assistant-prefill style: each example is a (user, assistant) pair.
@@ -182,19 +208,18 @@ experience. No specific visa sponsorship policy mentioned.""",
 
 
 def build_system_prompt() -> str:
-    """Return the system prompt with resume, rubric, and output format baked in.
+    """Return the system prompt with resume and rubric baked in.
 
     Sent once per API call and eligible for Anthropic prompt caching.
-    The few-shot examples are injected via get_few_shot_messages() as separate
-    message turns — not inline here — so the cache boundary is clean.
+    Output structure is enforced by SCORING_TOOL (function calling), not by
+    this prompt — so no output format instructions are needed here.
+    Few-shot examples are injected separately via get_few_shot_messages().
     """
     return (
         "You are a precise job-match scorer for a specific candidate. "
-        "Score each job 0–100 based on fit with the candidate's profile. "
-        "Always respond with ONLY the JSON object described below — nothing else.\n\n"
+        "Score each job 0–100 by calling the score_job tool.\n\n"
         f"CANDIDATE PROFILE:\n{_RESUME}\n\n"
-        f"{_RUBRIC}\n\n"
-        f"{_OUTPUT_FORMAT}"
+        f"{_RUBRIC}"
     )
 
 
