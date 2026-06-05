@@ -24,7 +24,7 @@
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
-│  │               COMPANY INTELLIGENCE LAYER  [NEW]                    │   │
+│  │               COMPANY INTELLIGENCE LAYER                     │   │
 │  │  Brave Search MCP ── research each company before scoring:        │   │
 │  │  recent layoffs? hiring freeze? funding round? Glassdoor dip?     │   │
 │  │  Fetch MCP ── pull company career page for additional context     │   │
@@ -50,19 +50,19 @@
 │  │  LinkedIn MCP       │  │  Playwright MCP (Microsoft, 33K stars)  │    │
 │  │  Find hiring mgr /  │  │  LLM drives browser via accessibility   │    │
 │  │  tech recruiter     │  │  snapshots — survives UI changes        │    │
-│  │  Claude Sonnet      │  │  Daily cap: 20/day · cover via Claude   │    │
+│  │  Claude Sonnet      │  │  Daily cap: 10/day · cover via Claude   │    │
 │  │  drafts outreach    │  └─────────────────────────────────────────┘    │
 │  └──────┬──────────────┘                                                 │
 │         │                                                                │
 │  ┌──────▼──────────────────────────────────────────────────────────┐     │
-│  │               FEEDBACK LOOP LAYER  [NEW]                         │     │
+│  │               FEEDBACK LOOP LAYER                          │     │
 │  │  Gmail MCP ── polls inbox for recruiter replies                  │     │
 │  │  Detects reply → auto-updates job status in Postgres            │     │
 │  │  "Recruiter replied" → status: phone_screen                     │     │
 │  └──────┬──────────────────────────────────────────────────────────┘     │
 │         │                                                                │
 │  ┌──────▼──────────────────────────────────────────────────────────┐     │
-│  │               INTERVIEW AUTOMATION LAYER  [NEW]                  │     │
+│  │               INTERVIEW AUTOMATION LAYER                   │     │
 │  │  Google Calendar MCP ── on interview confirm:                   │     │
 │  │  Creates prep event 24h before + adds JD summary to event body  │     │
 │  └──────┬──────────────────────────────────────────────────────────┘     │
@@ -74,7 +74,7 @@
 │  └──────┬──────────────────────────────────────────────────────────┘     │
 │         │                                                                │
 │  ┌──────▼──────────────────┐  ┌──────────────┐  ┌───────────────────┐   │
-│  │  STREAMLIT DASHBOARD    │  │   TELEGRAM   │  │   NOTION MCP [NEW]│   │
+│  │  STREAMLIT DASHBOARD    │  │   TELEGRAM   │  │   NOTION MCP│   │
 │  │  :8501                  │  │   ALERTS     │  │  Mirror Postgres  │   │
 │  │  Metrics · Queue ·      │  │  High-match  │  │  → Kanban board   │   │
 │  │  Applied · Analytics    │  │  Run summary │  │  (mobile-friendly)│   │
@@ -138,7 +138,7 @@ Logs success/failure per job; marks `apply_failed` in DB on error.
 LinkedIn MCP (Premium) finds hiring managers / tech recruiters at target company.
 Claude Sonnet drafts a personalized outreach message from the JD. Queues for human approval.
 
-### `src/feedback/gmail_monitor.py` *(Phase 10)*
+### `src/feedback/gmail_monitor.py` *(Phase 8)*
 Gmail MCP polls inbox every run for recruiter replies. Matches sender domain to
 known applied companies. On match → updates job status to `phone_screen`, sends Telegram alert.
 
@@ -199,16 +199,27 @@ CREATE TABLE jobs (
 );
 
 CREATE TABLE applications (
-    id             VARCHAR(36) PRIMARY KEY,
-    job_id         VARCHAR(36) REFERENCES jobs(id),
-    applied_at     TIMESTAMP DEFAULT NOW(),
-    method         VARCHAR(50),
-    status         VARCHAR(50) DEFAULT 'submitted',
-    interview_date TIMESTAMP,
-    calendar_event_id VARCHAR(255),                  -- from Google Calendar MCP
-    offer_amount   INTEGER,
-    notes          TEXT,
-    updated_at     TIMESTAMP DEFAULT NOW()
+    id                VARCHAR(36) PRIMARY KEY,
+    job_id            VARCHAR(36) REFERENCES jobs(id),
+    applied_at        TIMESTAMP DEFAULT NOW(),
+    method            VARCHAR(50),
+    status            VARCHAR(50) DEFAULT 'submitted',
+    interview_date    TIMESTAMP,
+    calendar_event_id VARCHAR(255),
+    offer_amount      INTEGER,
+    notes             TEXT,
+    updated_at        TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE pipeline_runs (
+    id           VARCHAR(36) PRIMARY KEY,
+    ran_at       TIMESTAMP DEFAULT NOW(),
+    jobs_fetched INTEGER DEFAULT 0,
+    jobs_new     INTEGER DEFAULT 0,
+    jobs_scored  INTEGER DEFAULT 0,
+    human_review INTEGER DEFAULT 0,
+    auto_applied INTEGER DEFAULT 0,
+    error        TEXT                     -- non-null triggers zero-result alert
 );
 ```
 

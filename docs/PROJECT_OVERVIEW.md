@@ -6,7 +6,7 @@ An autonomous, 24/7 job search and application system tailored for a Senior Java
 targeting Tier-1 and Tier-2 tech and finance companies in the US job market.
 
 The system runs continuously on a VPS, fetches fresh job postings every 6 hours from multiple
-platforms (LinkedIn, Indeed, Glassdoor, ZipRecruiter), scores each posting using Claude AI against
+platforms (Indeed, Glassdoor, ZipRecruiter, Google Jobs), scores each posting using Claude AI against
 a detailed candidate profile, routes high-match jobs to a human review queue, and auto-applies
 to mid-match jobs — all without manual intervention.
 
@@ -16,7 +16,7 @@ to mid-match jobs — all without manual intervention.
 |------|-----------|
 | Zero stale listings | Hard 48-hour cutoff on all fetched jobs |
 | Minimize human time | Auto-apply for score 60–84; human only sees score ≥ 85 |
-| Maximum coverage | 5 search terms × 4 job boards per run |
+| Maximum coverage | 5 search terms × Indeed / Glassdoor / ZipRecruiter / Google Jobs per run |
 | Smart filtering | Claude Haiku scores each job against actual resume |
 | Visa safety | Explicit "no sponsorship" text → auto-discard |
 | Recruiter reach | LinkedIn Premium tracing for every high-match job |
@@ -35,12 +35,8 @@ to mid-match jobs — all without manual intervention.
 
 ## Target Companies
 
-> Source: MyVisaJobs FY2025 H1B LCA data (same DOL source as H1BGrader). Body shops and staffing
-> firms excluded even if they appear high on the H1B volume list.
-
-> All companies below are eligible for application. Only Infosys is excluded.
-> Tiers affect scoring weight only — lower tier does not mean skip.
-> Source: MyVisaJobs FY2025 H1B LCA data (DOL).
+> Source: MyVisaJobs FY2025 H1B LCA data (same DOL source as H1BGrader).
+> Tiers affect scoring weight only — all tiers are eligible. Only Infosys is excluded.
 
 **Tier-1 — Highest H1B volume + top brand**
 - **Tech:** Amazon, Amazon Web Services, Microsoft, Google, Apple, Meta, IBM, Tesla, Intel, Qualcomm, Salesforce, Nvidia, Oracle, Cisco, Adobe, ServiceNow, LinkedIn, eBay, Micron, Hewlett Packard Enterprise, Expedia, Bloomberg, ADP, AT&T, Comcast, T-Mobile, Charter Communications
@@ -77,7 +73,7 @@ to mid-match jobs — all without manual intervention.
 
 ## Non-Goals
 
-- Does not scrape companies not on the target list
+- Does not restrict scraping to specific companies — all listings are fetched and scored; tiers only affect score weighting
 - Does not apply to roles requiring security clearance
 - Does not bypass CAPTCHA or violate platform ToS for mass scraping
 - Does not store or log any secrets or credentials in code
