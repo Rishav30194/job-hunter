@@ -71,9 +71,9 @@ print(f'Round 2 new (equals round 1 — no DB writes in test; 0 only after pipel
 
 ### Tasks
 - [x] `src/scoring/prompts.py` — resume context + scoring system/user prompts
-- [ ] `src/scoring/scorer.py` — Claude Haiku scoring with tenacity retry
-- [ ] Validate JSON output format
-- [ ] Validate disqualified flag detection
+- [x] `src/scoring/scorer.py` — Claude Haiku scoring with tenacity retry
+- [x] Validate JSON output format
+- [x] Validate disqualified flag detection
 
 ### Testing
 ```bash
@@ -399,8 +399,8 @@ curl http://localhost:8501                 # dashboard responds 200
 |-------|-------------|--------|
 | 1 | Foundation | ✅ Complete |
 | 2 | Ingestion | ✅ Complete |
-| 3 | LLM Scoring | 🟡 In Progress |
-| 4 | Routing & Notifications | ⬜ Not Started |
+| 3 | LLM Scoring | ✅ Complete |
+| 4 | Routing & Notifications | 🟡 In Progress |
 | 5 | Scheduler | ⬜ Not Started |
 | 6 | Dashboard | ⬜ Not Started |
 | 7 | Auto-Apply (Playwright MCP) | ⬜ Not Started |
