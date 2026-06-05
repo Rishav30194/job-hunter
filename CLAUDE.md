@@ -90,3 +90,11 @@ When starting a fresh session, follow this exact order before touching any code:
 - Before writing any file, state which phase and task it belongs to.
 - After writing a file, show the test command from the phase doc and wait for the user to confirm it passes before continuing.
 - **Never assume.** If any value, list, API behaviour, package name, or fact is not verified from a primary source (official docs, live fetch, npm/PyPI registry), state it explicitly as an assumption and flag it for the user to confirm before using it in code or docs.
+
+## Documentation Rules
+- Every class and every non-trivial method must have a short docstring stating its purpose.
+- Class docstring: one or two sentences on responsibility and lifetime.
+- Method docstring: one line on what it does; add a second line only if there is a non-obvious side-effect or return value.
+- Skip docstrings on trivial properties, dunder methods, and methods whose name is fully self-explanatory.
+- No param/return tables, no section headers — plain prose only.
+- Never restate the function name in the docstring.
