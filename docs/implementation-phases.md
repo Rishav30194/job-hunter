@@ -70,7 +70,7 @@ print(f'Round 2 new (equals round 1 — no DB writes in test; 0 only after pipel
 > Score every new job 0–100 using Claude Haiku against Rishav's resume.
 
 ### Tasks
-- [ ] `src/scoring/prompts.py` — resume context + scoring system/user prompts
+- [x] `src/scoring/prompts.py` — resume context + scoring system/user prompts
 - [ ] `src/scoring/scorer.py` — Claude Haiku scoring with tenacity retry
 - [ ] Validate JSON output format
 - [ ] Validate disqualified flag detection
