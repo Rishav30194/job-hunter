@@ -18,6 +18,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 import anthropic
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from config.settings import settings
 from src.db.models import Application, Job
@@ -41,18 +42,33 @@ _CLASSIFICATION_TOOL: dict = {
             },
             "company": {
                 "type": "string",
-                "description": "Company name extracted from the email. Empty string if not identifiable.",
+                "description": (
+                    "Company name explicitly stated in the email body or sender domain. "
+                    "Empty string if not clearly identifiable — do not infer or guess."
+                ),
             },
             "job_title": {
                 "type": "string",
-                "description": "Job title extracted from the email. Empty string if not identifiable.",
+                "description": (
+                    "Job title explicitly mentioned in the email. "
+                    "Empty string if not stated — do not infer from job alerts or subject lines."
+                ),
             },
             "summary": {
                 "type": "string",
                 "description": "One sentence summary of the email content.",
             },
+            "confident": {
+                "type": "boolean",
+                "description": (
+                    "True only when: (1) the category is unambiguous from the email text, "
+                    "AND (2) any extracted company/title is explicitly stated, not inferred. "
+                    "Set false if the email is ambiguous, truncated, or could plausibly belong "
+                    "to another category."
+                ),
+            },
         },
-        "required": ["category", "company", "job_title", "summary"],
+        "required": ["category", "company", "job_title", "summary", "confident"],
     },
 }
 
@@ -65,7 +81,10 @@ Categories:
 - assessment: Email contains a take-home assignment, coding test link, or scheduling link for a technical screen.
 - recruiter_reply: A live person responded — asking for availability, requesting a call, following up on an application.
 
-Extract company name and job title from the email content when present. Be conservative — only extract if clearly stated."""
+Rules:
+- Extract company name and job title ONLY if explicitly stated in the email body. Never infer from sender domain or subject line alone.
+- Set confident=false if: the email is truncated mid-sentence, the category is ambiguous, or you are extracting company/title from context rather than explicit statement.
+- When in doubt between rejection and unimportant, prefer unimportant — a false rejection on a live application is worse than a missed cleanup."""
 
 
 def check_gmail() -> dict:
@@ -123,6 +142,10 @@ def _fetch_unread_ids(service) -> list[str]:
     return [m["id"] for m in result.get("messages", [])]
 
 
+_BODY_HEAD_CHARS = 2000  # chars from start — covers greeting + main content
+_BODY_TAIL_CHARS = 1000  # chars from end — catches decisions buried at bottom of long emails
+
+
 def _get_email_text(service, msg_id: str) -> tuple[str, str, str]:
     """Return (subject, sender, body_text) for a message."""
     msg = service.users().messages().get(userId="me", id=msg_id, format="full").execute()
@@ -130,7 +153,10 @@ def _get_email_text(service, msg_id: str) -> tuple[str, str, str]:
     subject = headers.get("subject", "(no subject)")
     sender = headers.get("from", "")
     body = _extract_body(msg["payload"])
-    return subject, sender, body[:3000]  # cap body to avoid token bloat
+    # Take head + tail so decisions buried at the bottom of long ATS emails are not missed.
+    if len(body) > _BODY_HEAD_CHARS + _BODY_TAIL_CHARS:
+        body = body[:_BODY_HEAD_CHARS] + "\n…\n" + body[-_BODY_TAIL_CHARS:]
+    return subject, sender, body
 
 
 def _extract_body(payload: dict) -> str:
@@ -175,12 +201,22 @@ def _decode_part(payload: dict) -> str:
     return base64.urlsafe_b64decode(padded).decode("utf-8", errors="replace")
 
 
+@retry(
+    retry=retry_if_exception_type((anthropic.RateLimitError, anthropic.APIStatusError)),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
 def _classify_email(subject: str, sender: str, body: str) -> dict:
-    """Call Claude Haiku to classify the email and extract company/title."""
+    """Call Claude Haiku to classify the email and extract company/title.
+
+    Retries up to 3 times on rate limit or transient API errors.
+    Returns a dict with keys: category, company, job_title, summary, confident.
+    """
     user_content = f"From: {sender}\nSubject: {subject}\n\n{body}"
     response = _client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=256,
+        max_tokens=300,
         temperature=0,
         system=_SYSTEM_PROMPT,
         tools=[_CLASSIFICATION_TOOL],
@@ -190,7 +226,10 @@ def _classify_email(subject: str, sender: str, body: str) -> dict:
     tool_block = next((b for b in response.content if b.type == "tool_use"), None)
     if tool_block is None:
         raise ValueError("No tool_use block in classify_email response")
-    return tool_block.input
+    result = tool_block.input
+    # Haiku occasionally omits optional-feeling booleans despite schema requiring them
+    result.setdefault("confident", False)
+    return result
 
 
 def _mark_read(service, msg_id: str) -> None:
@@ -217,20 +256,21 @@ def _star_message(service, msg_id: str) -> None:
 def _find_matching_jobs(company: str, title: str) -> list[Job]:
     """Return applied/phone_screen/interview jobs that match company and title.
 
-    Returns empty list on DB unavailability so mail actions are never blocked by DB state.
+    Uses starts-with ILIKE on company (not contains) to reduce false matches from
+    newsletter mentions of company names. Returns empty list on DB unavailability.
     """
     if not company:
         return []
     try:
         with get_session() as session:
-            query = session.query(Job).filter(
+            # starts-with is less likely than contains to match unrelated newsletters
+            q = session.query(Job).filter(
                 Job.status.in_(["applied", "phone_screen", "interview"]),
-                Job.company.ilike(f"%{company}%"),
+                Job.company.ilike(f"{company}%"),
             )
             if title:
-                query = query.filter(Job.title.ilike(f"%{title}%"))
-            jobs = query.all()
-            # Detach from session — attributes still accessible on simple columns
+                q = q.filter(Job.title.ilike(f"%{title}%"))
+            jobs = q.all()
             session.expunge_all()
             return jobs
     except Exception:
@@ -270,11 +310,12 @@ def _process_message(service, msg_id: str, stats: dict) -> None:
     company = (classification.get("company") or "").strip()
     job_title = (classification.get("job_title") or "").strip()
     summary = classification.get("summary", "")
+    confident = classification.get("confident", False)
 
     stats["processed"] += 1
     logger.info(
-        "Email [%s] from '%s' → %s (company=%r title=%r)",
-        msg_id, sender, category, company, job_title,
+        "Email [%s] from '%s' → %s (company=%r title=%r confident=%s)",
+        msg_id, sender, category, company, job_title, confident,
     )
 
     if category == "unimportant":
@@ -295,26 +336,41 @@ def _process_message(service, msg_id: str, stats: dict) -> None:
         _mark_read(service, msg_id)
         stats["rejections"] += 1
         matches = _find_matching_jobs(company, job_title)
-        _handle_rejection(company, job_title, summary, matches)
+        _handle_rejection(company, job_title, summary, matches, confident)
         return
 
-    # assessment or recruiter_reply — leave unread, star, alert
+    # assessment or recruiter_reply — star + mark read, then alert
     _star_message(service, msg_id)
     stats["action_items"] += 1
     matches = _find_matching_jobs(company, job_title)
-    _handle_action_item(category, company, job_title, summary, matches)
+    _handle_action_item(category, company, job_title, summary, matches, confident)
 
 
-def _handle_rejection(company: str, title: str, summary: str, matches: list[Job]) -> None:
-    """Update DB for rejections and send Telegram alert."""
+def _handle_rejection(
+    company: str, title: str, summary: str, matches: list[Job], confident: bool
+) -> None:
+    """Update DB for rejections and send Telegram alert.
+
+    DB status is only set to 'rejected' when confident=True AND both company and title
+    were extracted — prevents a misclassified newsletter from silently killing a live
+    application in the database.
+    """
     parts = [p for p in [title, company] if p]
     label = html.escape(" @ ".join(parts)) if parts else "(unknown position)"
 
-    if len(matches) == 1:
+    # Guard: require high confidence + both fields to auto-mutate DB
+    can_auto_update = confident and bool(company) and bool(title)
+
+    if len(matches) == 1 and can_auto_update:
         _update_job_status(matches[0].id, "rejected")
         db_note = (
             f"✅ DB updated → rejected for "
             f"<b>{html.escape(matches[0].title)}</b> @ <b>{html.escape(matches[0].company)}</b>"
+        )
+    elif len(matches) == 1 and not can_auto_update:
+        db_note = (
+            f"⚠️ Low confidence — matched <b>{html.escape(matches[0].title)}</b> @ "
+            f"<b>{html.escape(matches[0].company)}</b> but DB not updated (verify manually)"
         )
     elif len(matches) > 1:
         db_note = f"⚠️ Ambiguous match ({len(matches)} jobs for {html.escape(company)}) — update DB manually"
@@ -329,22 +385,30 @@ def _handle_rejection(company: str, title: str, summary: str, matches: list[Job]
 
 
 def _handle_action_item(
-    category: str, company: str, title: str, summary: str, matches: list[Job]
+    category: str, company: str, title: str, summary: str, matches: list[Job], confident: bool
 ) -> None:
-    """Send Telegram alert for assessments and recruiter replies."""
+    """Send Telegram alert for assessments and recruiter replies.
+
+    Only advances status to phone_screen when confident=True AND both company and title
+    are present — a recruiter_reply with low confidence should not auto-update the DB.
+    """
     icon = "📋" if category == "assessment" else "💬"
     label_map = {"assessment": "Assessment / Coding Test", "recruiter_reply": "Recruiter Reply"}
     label = label_map.get(category, category)
     parts = [p for p in [title, company] if p]
     position = html.escape(" @ ".join(parts)) if parts else "(unknown position)"
 
+    can_auto_update = confident and bool(company) and bool(title)
+
     if len(matches) == 1:
         db_note = (
             f"Matched: <b>{html.escape(matches[0].title)}</b> @ <b>{html.escape(matches[0].company)}</b>"
         )
-        if category == "recruiter_reply":
+        if category == "recruiter_reply" and can_auto_update:
             _update_job_status(matches[0].id, "phone_screen")
             db_note += " → status updated to phone_screen"
+        elif category == "recruiter_reply" and not can_auto_update:
+            db_note += " — low confidence, verify and update manually"
     elif len(matches) > 1:
         db_note = f"⚠️ {len(matches)} possible matches for {html.escape(company)} — check inbox"
     else:
