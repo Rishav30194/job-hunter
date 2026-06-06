@@ -10,6 +10,7 @@ from sqlalchemy import select
 from config.settings import settings
 from src.db.models import Application, Job, PipelineRun
 from src.db.session import get_session
+from src.feedback.gmail_monitor import check_gmail
 from src.ingestion.deduplicator import filter_new
 from src.ingestion.fetcher import fetch_jobs
 from src.notifications.telegram import send_high_match_alert, send_run_summary
@@ -79,6 +80,12 @@ def run_pipeline() -> None:
             run_stats["auto_applied"] = _run_auto_apply(queued_apply_jobs)
         except Exception:
             logger.exception("Auto-apply step failed")
+
+    # Gmail feedback check — runs every pipeline cycle regardless of new jobs.
+    try:
+        check_gmail()
+    except Exception:
+        logger.exception("Gmail monitor step failed")
 
     # Escalate to an error if this is the Nth consecutive zero-result run.
     if error is None and run_stats["jobs_new"] == 0:

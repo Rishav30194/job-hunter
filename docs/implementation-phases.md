@@ -358,42 +358,40 @@ company name, extracted job title (if mentioned), has_action_link boolean.
 **Gmail scopes required:** `gmail.modify` (read + mark-as-read). Read-only is insufficient.
 
 ### Tasks
-- [ ] `src/feedback/__init__.py`
-- [ ] `src/feedback/setup_gmail.py` — one-time OAuth flow; saves refresh token to `.env`
-- [ ] `src/feedback/gmail_monitor.py`
-  - [ ] Authenticate via OAuth refresh token (google-api-python-client)
-  - [ ] Fetch unread emails from last 24h
-  - [ ] Step 1: filter obvious automated senders (noreply, donotreply, known ATS domains)
-  - [ ] Step 2: Haiku classify remaining emails → 5 categories
-  - [ ] Step 3: domain-match extracted company against jobs table
-  - [ ] Step 4: apply action per category (mark read / Telegram alert / DB update)
-  - [ ] Mark `confirmation` and `unimportant` as read via Gmail API
-  - [ ] Send Telegram for `recruiter_reply`, `assessment`, `rejection`
-  - [ ] Update job status in DB for matched emails
-- [ ] `config/settings.py` — add `google_client_id`, `google_client_secret`, `google_refresh_token`
-- [ ] `.env.example` — document Gmail OAuth fields
-- [ ] Integrate `check_gmail()` into `pipeline.py` — runs every pipeline cycle
-- [ ] `requirements.txt` — add `google-api-python-client`, `google-auth-oauthlib`
+- [x] `src/feedback/__init__.py`
+- [x] `src/feedback/setup_gmail.py` — one-time OAuth flow; saves refresh token to `.env`
+- [x] `src/feedback/gmail_monitor.py`
+  - [x] Authenticate via OAuth refresh token (google-api-python-client)
+  - [x] Fetch unread emails from last 48h
+  - [x] Haiku classify each email → 5 categories (content-based, not sender-based)
+  - [x] Match extracted company + title against DB (`applied`/`phone_screen`/`interview` jobs)
+  - [x] Apply action per category (mark read / star / Telegram alert / DB update)
+  - [x] Mark `confirmation` and `unimportant` as read via Gmail API
+  - [x] Send Telegram for `recruiter_reply`, `assessment`, `rejection`
+  - [x] Update job status in DB for matched emails; graceful no-op on DB unavailability
+- [x] `config/settings.py` — add `google_client_id`, `google_client_secret`, `google_refresh_token`
+- [x] `.env.example` — document Gmail OAuth fields
+- [x] Integrate `check_gmail()` into `pipeline.py` — runs every pipeline cycle
+- [x] `requirements.txt` — `google-api-python-client`, `google-auth-oauthlib` already present
 
 ### Testing
 ```bash
-# One-time OAuth setup
+# One-time OAuth setup (opens browser, saves refresh token to .env automatically)
 PYTHONPATH=. venv/bin/python src/feedback/setup_gmail.py
 
-# Smoke test (lists what it would do, no side effects)
+# Live run (marks emails read, stars action items, updates DB, sends Telegram)
 PYTHONPATH=. venv/bin/python -c "
+import logging; logging.basicConfig(level=logging.INFO)
 from src.feedback.gmail_monitor import check_gmail
-results = check_gmail(dry_run=True)
-for r in results:
-    print(r['category'], '|', r['from'], '|', r['subject'][:60])
-"
-
-# Live run (marks emails, updates DB, sends Telegram)
-PYTHONPATH=. venv/bin/python -c "
-from src.feedback.gmail_monitor import check_gmail
-check_gmail()
+stats = check_gmail()
+print('Stats:', stats)
 "
 ```
+
+**Verified in production:** 50 unread emails processed in first run — 33 confirmations marked
+read, 11 rejections, 4 action items (assessment/recruiter reply) starred and Telegram-alerted.
+DB lookup degrades gracefully when running outside Docker (postgres hostname unreachable) — mail
+actions still complete, DB update skipped with a warning log.
 
 ---
 
@@ -531,7 +529,7 @@ curl http://localhost:8501                 # dashboard responds 200
 | 5 | Scheduler | ✅ Complete |
 | 6 | Dashboard | ✅ Complete |
 | 7 | Auto-Apply (Playwright MCP) | ✅ Complete |
-| 8 | Gmail Feedback Loop (LinkedIn tracer dropped) | 🔄 In Progress (awaiting Google OAuth credentials) |
+| 8 | Gmail Feedback Loop (LinkedIn tracer dropped) | ✅ Complete |
 | 9 | Company Intelligence (Brave Search MCP) | ⬜ Not Started |
 | 10 | Interview Calendar (Google Calendar MCP) | ⬜ Not Started |
 | 11 | Memory + Notion Sync | ⬜ Not Started |
