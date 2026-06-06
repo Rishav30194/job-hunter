@@ -12,8 +12,8 @@
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                       INGESTION LAYER                              │   │
-│  │  jobspy ──► Indeed / Google Jobs                                   │   │
-│  │  5 search terms × 2 platforms = up to 250 listings/run            │   │
+│  │  jobspy ──► Indeed only (Google Jobs cursor broken in jobspy 1.1.82)│   │
+│  │  5 search terms × 1 platform = up to 125 listings/run             │   │
 │  │  Hard filters: age ≤ 48h · salary ≥ $100K · no visa rejection     │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
@@ -110,9 +110,10 @@ This is reliable and sustainable; trying to automate Workday at Tier-1 banks is 
 ## Components
 
 ### `src/ingestion/fetcher.py`
-Wraps `jobspy.scrape_jobs()` across 5 search terms × 2 platforms (Indeed, Google Jobs).
-Glassdoor and ZipRecruiter were dropped — unreliable scraping. Applies hard pre-filters
-(age ≤ 48h, salary ≥ $100K, visa rejection text, excluded companies).
+Wraps `jobspy.scrape_jobs()` across 5 search terms × 1 platform (Indeed only).
+Glassdoor (400 errors), ZipRecruiter (403 bot block), LinkedIn (silent rate limits), and
+Google Jobs (cursor pagination broken in jobspy 1.1.82) are all excluded. Applies hard
+pre-filters (age ≤ 48h, salary ≥ $100K, visa rejection text, excluded companies).
 
 ### `src/ingestion/deduplicator.py`
 SHA-256 hash dedup against Postgres. Also queries the `applications` table for recently

@@ -22,8 +22,10 @@ SEARCH_TERMS: list[str] = [
 # Glassdoor excluded — jobspy location parsing bug (400 errors).
 # ZipRecruiter excluded — bot detection blocks non-browser requests (403).
 # LinkedIn excluded — silently rate-limits without error.
-# Google Jobs aggregates listings from all three, so coverage loss is minimal.
-PLATFORMS: list[str] = ["indeed", "google"]
+# Google Jobs excluded — jobspy 1.1.82 returns 0 results ("initial cursor not found");
+# Google changed their Jobs page structure and the cursor-based pagination is broken.
+# Re-add "google" when a fixed jobspy version is available.
+PLATFORMS: list[str] = ["indeed"]
 
 # Title substrings that disqualify a listing before it reaches the scorer.
 # Lowercase-matched against the job title.
