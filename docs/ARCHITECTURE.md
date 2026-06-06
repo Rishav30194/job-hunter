@@ -148,13 +148,22 @@ Enriched with company intelligence signal from Phase 9. Retry via tenacity.
 Routes scored jobs into four buckets, sorted by score descending so caps fill highest-first.
 Overflow from human_review cap spills to queued_apply; overflow from auto-apply cap is archived.
 
-### `src/apply/playwright_apply.py` *(Phase 7 — uses Playwright MCP)*
+### `src/apply/playwright_apply.py` *(Phase 7)*
 Scoped to **Indeed Easy Apply only** (`job.url` must contain `indeed.com`).
-Calls Playwright MCP tools via accessibility snapshots — no CSS selectors.
-Jobs on Workday/Greenhouse/Oracle/company career sites are left as `queued_apply`
-for dashboard one-click manual apply; those portals use Cloudflare Bot Management
-which reliably blocks headless browsers at scale. See MCP scope note above.
-Logs success/failure per job; marks `apply_failed` in DB on error.
+
+Thin Python wrapper around a Claude agent + Playwright MCP agentic loop:
+1. Calls Anthropic SDK (`messages.create`) with Playwright MCP tools attached
+2. Claude agent drives the browser via accessibility snapshots — no CSS selectors
+3. Handles login, multi-step forms, work-auth questions, resume upload intelligently
+4. Loop runs until agent signals completion or error; result parsed from final message
+
+Raw Python Playwright was rejected: Indeed Easy Apply forms vary too much across jobs
+(conditional fields, question types, step counts) for hardcoded logic to be reliable.
+Claude reads the page fresh each step — durable across UI changes.
+
+Jobs on Workday/Greenhouse/Oracle stay as `queued_apply` — Cloudflare blocks headless
+browsers on those portals. Surfaced in dashboard Manual Apply Queue for one-click apply.
+Logs success/failure per job; marks `apply_failed` in DB on error with Telegram alert.
 
 ### `src/recruiter/tracer.py` *(Phase 8)*
 LinkedIn MCP (Premium) finds hiring managers / tech recruiters at target company.

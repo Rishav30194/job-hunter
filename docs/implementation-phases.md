@@ -221,24 +221,53 @@ Auto-apply is therefore scoped to `indeed.com` URLs only, where bot pressure is 
 and the authenticated session reduces detection risk. Jobs on all other platforms are
 left as `queued_apply` and surfaced in the dashboard for one-click manual apply.
 
-**Why Playwright MCP over raw Playwright:**
-Accessibility snapshots instead of CSS selectors — Claude reads page structure
-intelligently and fills forms without brittle element targeting.
+**Why Playwright MCP via Claude agent, not raw Python Playwright:**
+Indeed Easy Apply forms vary wildly — multi-step, conditional fields, work-authorization
+questions, salary expectations. Hardcoded Python selector logic breaks on every UI change
+and cannot handle question variation intelligently.
+
+Instead, `playwright_apply.py` is a thin Python wrapper that:
+1. Spawns a Claude agent (Anthropic SDK `messages.create` in an agentic tool-use loop)
+2. Passes the agent the job details + candidate profile as context
+3. Attaches Playwright MCP tools (`browser_navigate`, `browser_snapshot`, `browser_click`,
+   `browser_type`) so Claude drives the browser via accessibility snapshots
+4. Runs the loop until the agent signals done or errors out
+5. Parses the agent's final message for `applied` / `apply_failed` / `skipped`
+
+Claude reads the page fresh on every step — no selectors, no hardcoded field names.
+Cost: ~$0.003–0.01 per application with Haiku. Negligible vs. the value of correct answers.
+
+**New settings required** (added to `config/settings.py`):
+- `indeed_email: str = ""` — Indeed account email for login
+- `indeed_password: str = ""` — Indeed account password
+- `resume_path: str = ""` — absolute local path to PDF resume for upload
+
+If any of these are empty, `apply_to_job()` returns `skipped` with a warning log.
+Session cookies are persisted to `data/indeed_session.json` to avoid re-login each run.
 
 ### Tasks
-- [ ] Install: `npx @playwright/mcp@latest` (verify in `.mcp.json`)
-- [ ] `src/apply/playwright_apply.py`
-  - [ ] Pre-check: skip if `job['url']` does not contain `indeed.com` — return `skipped`
-  - [ ] Call Playwright MCP tools: `browser_navigate`, `browser_click`, `browser_type`, `browser_snapshot`
-  - [ ] Indeed login (session cookie reuse where possible)
-  - [ ] Detect Easy Apply button via snapshot, not selector
-  - [ ] Multi-step form: Claude reads each step, fills intelligently
-  - [ ] Upload resume from local path
-  - [ ] Submit and confirm success/failure
-  - [ ] On failure: `status=apply_failed`, log reason, Telegram alert
-  - [ ] On skipped (non-Indeed URL): leave `status=queued_apply` for dashboard
-- [ ] Integrate into `pipeline.py` after routing
-- [ ] Daily cap: 20/day enforced in router
+- [x] Install: `@playwright/mcp@0.0.75` already registered in `.mcp.json`
+- [x] `src/apply/__init__.py`
+- [x] `src/apply/playwright_apply.py`
+  - [x] Pre-check: skip if `job['url']` does not contain `indeed.com` — return `skipped`
+  - [x] Pre-check: skip if session file missing — instruct user to run `setup_session.py`
+  - [x] Pre-check: skip if `indeed_email` or `resume_path` not set
+  - [x] Duplicate application guard — skip if `job['applied_at']` is already set
+  - [x] Stealth browser args — `--disable-blink-features=AutomationControlled`, realistic user-agent, `navigator.webdriver` removed
+  - [x] Spawn Claude agent (Haiku) with Playwright MCP tools in agentic tool-use loop
+  - [x] Agent: navigate to job URL, detect Easy Apply button via snapshot
+  - [x] Session expiry detection — URL pattern check in snapshot/navigate; returns `apply_failed: session_expired`
+  - [x] Agent: fill multi-step form intelligently from job + candidate context
+  - [x] Agent: upload resume from `settings.resume_path`
+  - [x] Agent: submit and confirm success page
+  - [x] Tenacity retry on `_call_claude()` — `RateLimitError` / `APIStatusError`, exponential backoff, 3 attempts
+  - [x] Parse agent result → `applied` / `apply_failed` / `skipped`
+  - [x] On `apply_failed`: screenshot to `data/screenshots/failed_<id>.png`, Telegram alert
+  - [x] On skipped (non-Indeed URL): leave `status=queued_apply` for dashboard
+- [x] `src/apply/setup_session.py` — one-time headful browser script for Google OAuth login; saves `data/indeed_session.json`
+- [x] `config/settings.py` — add `indeed_email`, `indeed_password`, `resume_path`
+- [x] Integrate `apply_to_job()` into `pipeline.py` after routing step
+- [x] Daily cap: 20/day enforced in router (done in Phase 4)
 
 ### Testing
 ```bash
@@ -432,7 +461,7 @@ curl http://localhost:8501                 # dashboard responds 200
 | 4 | Routing & Notifications | ✅ Complete |
 | 5 | Scheduler | ✅ Complete |
 | 6 | Dashboard | ✅ Complete |
-| 7 | Auto-Apply (Playwright MCP) | ⬜ Not Started |
+| 7 | Auto-Apply (Playwright MCP) | ✅ Complete |
 | 8 | Recruiter Tracer + Gmail Feedback | ⬜ Not Started |
 | 9 | Company Intelligence (Brave Search MCP) | ⬜ Not Started |
 | 10 | Interview Calendar (Google Calendar MCP) | ⬜ Not Started |

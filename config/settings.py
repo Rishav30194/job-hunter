@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     linkedin_email: str = ""
     linkedin_password: str = ""
 
+    indeed_email: str = ""
+    indeed_password: str = ""
+    resume_path: str = ""          # absolute local path to PDF resume for upload
+
     brave_api_key: str = ""
 
     google_client_id: str = ""
