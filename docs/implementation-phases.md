@@ -314,7 +314,7 @@ print('Result:', result)
 
 **Gmail API directly — not Gmail MCP.** Same decision as Phase 7 (Python Playwright over
 Playwright MCP): direct API gives full control, no MCP server process to manage, same
-Google OAuth credentials used by Phase 10 (Calendar).
+Google OAuth credentials used by Phase 9 (Calendar).
 
 **Cost: ~$0.15–$0.60/month** (Haiku classification on ~10–40 emails/day at ~$0.0005/email).
 
@@ -402,36 +402,7 @@ actions still complete, DB update skipped with a warning log.
 
 ---
 
-## Phase 9 — Company Intelligence Layer
-> Research each company via Brave Search MCP before scoring to improve accuracy.
-
-**Why this matters:** A perfect Java + Spring Boot JD at a company mid-layoff should score lower.
-A company that just raised a Series C and is actively hiring Java engineers should score higher.
-
-### Tasks
-- [ ] Get Brave Search API key (free tier: 2,000 queries/month)
-- [ ] `src/intelligence/company_researcher.py`
-  - [ ] Brave Search MCP: query `"{company} layoffs 2026"`, `"{company} hiring engineers"`
-  - [ ] Fetch MCP: pull company Glassdoor page for rating trend
-  - [ ] Parse signals: layoff risk · hiring momentum · funding stage · Glassdoor score
-  - [ ] Return company health score (0–10) injected into scoring prompt
-- [ ] Update `src/scoring/prompts.py` to accept company signal in prompt
-- [ ] Update `src/scoring/scorer.py` to call researcher before scoring
-
-### Testing
-```bash
-python -c "
-from src.intelligence.company_researcher import research_company
-signal = research_company('Stripe')
-print('Health score:', signal['health_score'])
-print('Summary:', signal['summary'])
-"
-# Expect: positive signals for active hiring, no recent layoffs
-```
-
----
-
-## Phase 10 — Interview Calendar Automation
+## Phase 9 — Interview Calendar Automation
 > Auto-create Google Calendar prep events when an interview is confirmed.
 
 ### Tasks
@@ -460,43 +431,32 @@ print('Calendar event ID:', event_id)
 
 ---
 
-## Phase 11 — Memory + Notion Sync
-> Persistent agent memory for repeat-apply prevention and Notion Kanban mirror.
+## Phase 10 — Rejection Cooldown
+> Prevent re-applying to companies that already rejected you within the last 90 days.
+
+**Implementation:** DB-only — no new MCP dependency. The `applications` table already records
+rejections from the Gmail feedback loop. A single query at dedup time is sufficient.
 
 ### Tasks
-- [ ] **Memory MCP** — rejection tracking
-  - [ ] `src/memory/manager.py`
-  - [ ] On rejection: write to Memory MCP `{company}: rejected {date}, cooldown 90 days`
-  - [ ] At dedup stage: check Memory MCP before processing — skip companies in cooldown
-  - [ ] Also track: recruiters messaged (prevent duplicate outreach)
-
-- [ ] **Notion MCP** — Kanban mirror
-  - [ ] Create Notion database with columns: Applied · Phone Screen · Interview · Offer · Rejected
-  - [ ] `src/notion/sync.py` — after each run, sync Postgres → Notion
-  - [ ] Each job card: title, company, score, salary, URL, applied date
-  - [ ] Run as last step in `pipeline.py`
+- [ ] `src/ingestion/deduplicator.py` — add rejection cooldown check
+  - [ ] Query: `SELECT DISTINCT company FROM applications WHERE status='rejected' AND applied_at > NOW() - INTERVAL '90 days'`
+  - [ ] Skip any job whose company is in the cooldown set before passing to scorer
 
 ### Testing
 ```bash
-# Test memory write/read
 python -c "
-from src.memory.manager import record_rejection, is_in_cooldown
-record_rejection('Goldman Sachs')
-print('In cooldown:', is_in_cooldown('Goldman Sachs'))   # True
-print('In cooldown:', is_in_cooldown('JPMorgan Chase'))  # False
+from src.db.session import get_session
+from src.ingestion.deduplicator import filter_new
+session = get_session()
+# Manually insert a rejected application row for a company, then re-run filter_new
+# and verify that company's jobs are excluded
+print('Cooldown check works if recently-rejected company is filtered out')
 "
-
-# Test Notion sync (verify NOTION_API_KEY set)
-python -c "
-from src.notion.sync import sync_pipeline
-sync_pipeline()
-"
-# Open Notion — verify cards appear in correct columns
 ```
 
 ---
 
-## Phase 12 — VPS Deployment
+## Phase 11 — VPS Deployment
 > Deploy the full stack to a cloud VPS and run 24/7.
 
 ### Tasks
@@ -519,7 +479,6 @@ curl http://localhost:8501                 # dashboard responds 200
 # From local browser
 # Open http://<vps-ip>:8501 → dashboard loads with real data
 # Check Telegram — run summary received
-# Check Notion board — jobs appear in Applied column
 # Check Gmail — reply detection fires on test email
 ```
 
@@ -537,7 +496,6 @@ curl http://localhost:8501                 # dashboard responds 200
 | 6 | Dashboard | ✅ Complete |
 | 7 | Auto-Apply (Playwright MCP) | ✅ Complete |
 | 8 | Gmail Feedback Loop (LinkedIn tracer dropped) | ✅ Complete |
-| 9 | Company Intelligence (Brave Search MCP) | ⬜ Not Started |
-| 10 | Interview Calendar (Google Calendar MCP) | ⬜ Not Started |
-| 11 | Memory + Notion Sync | ⬜ Not Started |
-| 12 | VPS Deployment | ⬜ Not Started |
+| 9 | Interview Calendar (Google Calendar API) | ⬜ Not Started |
+| 10 | Rejection Cooldown (DB-based) | ⬜ Not Started |
+| 11 | VPS Deployment | ⬜ Not Started |

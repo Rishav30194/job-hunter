@@ -20,20 +20,13 @@
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                    DEDUPLICATION LAYER                             │   │
 │  │  SHA-256 hash(company + title + location) vs Postgres             │   │
-│  │  Memory MCP ── remembers past rejections, repeat-apply guard      │   │
-│  └────────────────────────────┬──────────────────────────────────────┘   │
-│                               │                                          │
-│  ┌────────────────────────────▼──────────────────────────────────────┐   │
-│  │               COMPANY INTELLIGENCE LAYER                     │   │
-│  │  Brave Search MCP ── research each company before scoring:        │   │
-│  │  recent layoffs? hiring freeze? funding round? Glassdoor dip?     │   │
-│  │  Fetch MCP ── pull company career page for additional context     │   │
+│  │  Rejection cooldown: skip companies rejected within 90 days       │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                    LLM SCORING ENGINE                              │   │
 │  │  Claude Haiku — scores each job 0–100                             │   │
-│  │  Rubric: Java/Spring match · level · domain · comp · company health│  │
+│  │  Rubric: Java/Spring match · level · domain · compensation        │   │
 │  │  Returns: score · reasoning · disqualified flag                   │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
@@ -63,8 +56,8 @@
 │  └──────┬──────────────────────────────────────────────────────────┘     │
 │         │                                                                │
 │  ┌──────▼──────────────────────────────────────────────────────────┐     │
-│  │               INTERVIEW AUTOMATION LAYER                   │     │
-│  │  Google Calendar MCP ── on interview confirm:                   │     │
+│  │         INTERVIEW AUTOMATION LAYER  [Phase 9]                  │     │
+│  │  Google Calendar API ── on interview confirm:                   │     │
 │  │  Creates prep event 24h before + adds JD summary to event body  │     │
 │  └──────┬──────────────────────────────────────────────────────────┘     │
 │         │                                                                │
@@ -74,12 +67,12 @@
 │  │  Redis: rate-limit counters · dedup cache                       │     │
 │  └──────┬──────────────────────────────────────────────────────────┘     │
 │         │                                                                │
-│  ┌──────▼──────────────────┐  ┌──────────────┐  ┌───────────────────┐   │
-│  │  STREAMLIT DASHBOARD    │  │   TELEGRAM   │  │   NOTION MCP│   │
-│  │  :8501                  │  │   ALERTS     │  │  Mirror Postgres  │   │
-│  │  Metrics · Queue ·      │  │  High-match  │  │  → Kanban board   │   │
-│  │  Applied · Analytics    │  │  Run summary │  │  (mobile-friendly)│   │
-│  └─────────────────────────┘  └──────────────┘  └───────────────────┘   │
+│  ┌──────▼──────────────────────────────┐  ┌──────────────────────────┐   │
+│  │  STREAMLIT DASHBOARD                │  │   TELEGRAM ALERTS        │   │
+│  │  :8501                              │  │   High-match             │   │
+│  │  Metrics · Queue · Applied ·        │  │   Run summary            │   │
+│  │  Analytics                          │  │                          │   │
+│  └─────────────────────────────────────┘  └──────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -90,11 +83,7 @@
 | MCP | Package | Purpose | Auth Required |
 |-----|---------|---------|---------------|
 | `playwright` | `@playwright/mcp` (Microsoft) | Indeed Easy Apply automation only — see scope note below | None |
-| `brave-search` | `@modelcontextprotocol/server-brave-search` | Company intelligence research | Brave API key |
-| `memory` | `@modelcontextprotocol/server-memory` | Persist past application/rejection memory | None |
-| `fetch` | `@modelcontextprotocol/server-fetch` | Scrape company career pages | None |
-| `google-calendar` | `@cocal/google-calendar-mcp` | Auto-create interview prep events | Google OAuth |
-| `notion` | `@notionhq/notion-mcp-server` | Mirror pipeline to Notion Kanban board | Notion API key |
+| `google-calendar` | `@cocal/google-calendar-mcp` | Auto-create interview prep events (Phase 9) | Google OAuth |
 
 All servers are configured in `.mcp.json` at project root. Env vars are loaded from `.env`.
 
@@ -126,22 +115,16 @@ Glassdoor and ZipRecruiter were dropped — unreliable scraping. Applies hard pr
 (age ≤ 48h, salary ≥ $100K, visa rejection text, excluded companies).
 
 ### `src/ingestion/deduplicator.py`
-SHA-256 hash dedup against Postgres. Will also query Memory MCP for past rejections
-to skip companies in a 90-day cooldown *(Memory MCP integration: Phase 11)*.
+SHA-256 hash dedup against Postgres. Also queries the `applications` table for recently
+rejected companies (within 90 days) to skip repeat applications *(Phase 10)*.
 
 ### `data/companies.py`
 Three-tier company list sourced from MyVisaJobs FY2025 H1B LCA data (same DOL source as
 H1BGrader). Tier-1/2/3 sets used for scoring bonus. Hard-excluded set contains only
 Infosys / Infosys Limited — all other companies are eligible.
 
-### `src/intelligence/company_researcher.py` *(Phase 9)*
-Uses Brave Search MCP and Fetch MCP to research each company before scoring.
-Returns a company signal dict: health score, layoff risk, hiring momentum.
-Injected into the scoring prompt to improve score accuracy.
-
 ### `src/scoring/scorer.py`
-Claude Haiku scoring (0–100) with resume baked into system prompt.
-Enriched with company intelligence signal from Phase 9. Retry via tenacity.
+Claude Haiku scoring (0–100) with resume baked into system prompt. Retry via tenacity.
 
 ### `src/routing/router.py`
 Routes scored jobs into four buckets, sorted by score descending so caps fill highest-first.
@@ -180,18 +163,9 @@ extracted company + title against jobs table (starts-with ILIKE, statuses: appli
 phone_screen / interview) — updates DB on confident single match, alerts on ambiguous
 match or zero match.
 
-### `src/calendar/interview_scheduler.py` *(Phase 10)*
-Google Calendar MCP creates a prep event 24h before confirmed interviews.
-Event body contains: JD summary, company research notes, recruiter name.
-
-### `src/memory/manager.py` *(Phase 11)*
-Memory MCP stores: companies applied to, rejection timestamps, recruiter names contacted.
-Checked at dedup stage to prevent repeat applications within 90-day cooldown.
-
-### `src/notion/sync.py` *(Phase 11)*
-Notion MCP mirrors job pipeline status into a Notion Kanban database.
-Columns: Applied → Phone Screen → Interview → Offer / Rejected.
-Syncs every pipeline run — Notion board always reflects Postgres state.
+### `src/calendar/interview_scheduler.py` *(Phase 9)*
+Google Calendar API creates a prep event 24h before confirmed interviews.
+Event body contains: JD summary, recruiter name. Triggered from dashboard when user sets status to `interview`.
 
 ### `src/notifications/telegram.py`
 httpx-based Telegram Bot API. High-match alert (top 10 + links) + run summary per cycle.
@@ -228,7 +202,7 @@ CREATE TABLE jobs (
     source               VARCHAR(50),
     posted_at            TIMESTAMP,
     fetched_at           TIMESTAMP DEFAULT NOW(),
-    company_health_score INTEGER,                    -- from Brave Search MCP
+    company_health_score INTEGER,
     score                INTEGER,
     score_reasoning      TEXT,
     status               VARCHAR(50) DEFAULT 'new',  -- new/human_review/queued_apply/applied/archived/disqualified/skipped/apply_failed/phone_screen/interview/offer/rejected
@@ -274,14 +248,13 @@ CREATE TABLE pipeline_runs (
 ```
 fetch_jobs()                         ← jobspy (Indeed/Google Jobs)
     └─► pre-filter (age/salary/visa/company)
-         └─► filter_new()            ← SHA-256 dedup (+ Memory MCP rejection guard: Phase 11)
-              └─► research_companies() ← Brave Search MCP + Fetch MCP (Phase 9)
-                   └─► score_jobs()  ← Claude Haiku (enriched prompt)
-                        └─► route_jobs()
-                             ├─► human_review  → DB + Telegram alert
-                             ├─► auto_apply    → Playwright MCP → DB (applied)
-                             ├─► archived      → DB
-                             └─► disqualified  → DB
+         └─► filter_new()            ← SHA-256 dedup (+ DB rejection cooldown: Phase 10)
+              └─► score_jobs()       ← Claude Haiku
+                   └─► route_jobs()
+                        ├─► human_review  → DB + Telegram alert
+                        ├─► auto_apply    → Playwright MCP → DB (applied)
+                        ├─► archived      → DB
+                        └─► disqualified  → DB
 
 [parallel, every run]
 gmail_monitor()                      ← Gmail API (google-api-python-client)
@@ -289,12 +262,8 @@ gmail_monitor()                      ← Gmail API (google-api-python-client)
          └─► update status → phone_screen → Telegram alert
 
 [on dashboard action: interview confirmed]
-schedule_interview_prep()            ← Google Calendar MCP
+schedule_interview_prep()            ← Google Calendar API (Phase 9)
     └─► create prep event 24h before
-
-[every run]
-notion_sync()                        ← Notion MCP
-    └─► mirror Postgres status → Notion Kanban board
 ```
 
 ---
@@ -306,12 +275,8 @@ notion_sync()                        ← Notion MCP
 | jobspy | Multi-platform job scraping | Python lib | None |
 | Anthropic API | Claude Haiku — job scoring and Gmail email classification | SDK | API key |
 | Playwright MCP | LLM-driven auto-apply browser | MCP | None |
-| Brave Search MCP | Company intelligence | MCP | Brave API key |
-| Memory MCP | Rejection/application history | MCP | None |
-| Fetch MCP | Career page scraping | MCP | None |
 | Gmail API | Inbox monitoring, email classification, status updates | google-api-python-client | Google OAuth |
-| Google Calendar MCP | Interview prep automation | MCP | Google OAuth |
-| Notion MCP | Kanban pipeline mirror | MCP | Notion API key |
+| Google Calendar MCP | Interview prep automation (Phase 9) | MCP | Google OAuth |
 | Telegram Bot API | Alerts | httpx | Bot token |
 | PostgreSQL | Primary state store | — | Connection string |
 | Redis | Rate counters, dedup cache | — | Connection string |
