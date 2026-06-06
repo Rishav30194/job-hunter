@@ -12,8 +12,8 @@
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                       INGESTION LAYER                              │   │
-│  │  jobspy ──► Indeed only (Google Jobs cursor broken in jobspy 1.1.82)│   │
-│  │  5 search terms × 1 platform = up to 125 listings/run             │   │
+│  │  jobspy ──► Indeed (5 search terms, up to 125 listings/run)        │   │
+│  │  JSearch ──► Google for Jobs (1 call/run, ~10 listings, free tier) │   │
 │  │  Hard filters: age ≤ 48h · salary ≥ $100K · no visa rejection     │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
@@ -56,7 +56,7 @@
 │  └──────┬──────────────────────────────────────────────────────────┘     │
 │         │                                                                │
 │  ┌──────▼──────────────────────────────────────────────────────────┐     │
-│  │         INTERVIEW AUTOMATION LAYER  [Phase 9]                  │     │
+│  │         INTERVIEW AUTOMATION LAYER  [Phase 10]                 │     │
 │  │  Google Calendar API ── on interview confirm:                   │     │
 │  │  Creates prep event 24h before + adds JD summary to event body  │     │
 │  └──────┬──────────────────────────────────────────────────────────┘     │
@@ -83,7 +83,7 @@
 | MCP | Package | Purpose | Auth Required |
 |-----|---------|---------|---------------|
 | `playwright` | `@playwright/mcp` (Microsoft) | Indeed Easy Apply automation only — see scope note below | None |
-| `google-calendar` | `@cocal/google-calendar-mcp` | Auto-create interview prep events (Phase 9) | Google OAuth |
+| `google-calendar` | `@cocal/google-calendar-mcp` | Auto-create interview prep events (Phase 10) | Google OAuth |
 
 All servers are configured in `.mcp.json` at project root. Env vars are loaded from `.env`.
 
@@ -110,14 +110,18 @@ This is reliable and sustainable; trying to automate Workday at Tier-1 banks is 
 ## Components
 
 ### `src/ingestion/fetcher.py`
-Wraps `jobspy.scrape_jobs()` across 5 search terms × 1 platform (Indeed only).
+Two sources merged before deduplication:
+- **jobspy / Indeed** — 5 search terms × 25 results, up to 125 listings/run.
+- **JSearch (RapidAPI)** — 1 call/run, broad Java backend query, ~10 Google for Jobs results.
+  Capped at 1 call/run to stay within the 200 req/month free tier (120 calls/month used).
+
 Glassdoor (400 errors), ZipRecruiter (403 bot block), LinkedIn (silent rate limits), and
-Google Jobs (cursor pagination broken in jobspy 1.1.82) are all excluded. Applies hard
-pre-filters (age ≤ 48h, salary ≥ $100K, visa rejection text, excluded companies).
+native Google Jobs (jobspy cursor broken in v1.1.82) are all excluded.
+Applies hard pre-filters (age ≤ 48h, salary ≥ $100K, visa rejection text, excluded companies).
 
 ### `src/ingestion/deduplicator.py`
 SHA-256 hash dedup against Postgres. Also queries the `applications` table for recently
-rejected companies (within 90 days) to skip repeat applications *(Phase 10)*.
+rejected companies (within 90 days) to skip repeat applications *(Phase 11)*.
 
 ### `data/companies.py`
 Three-tier company list sourced from MyVisaJobs FY2025 H1B LCA data (same DOL source as
@@ -164,7 +168,7 @@ extracted company + title against jobs table (starts-with ILIKE, statuses: appli
 phone_screen / interview) — updates DB on confident single match, alerts on ambiguous
 match or zero match.
 
-### `src/calendar/interview_scheduler.py` *(Phase 9)*
+### `src/calendar/interview_scheduler.py` *(Phase 10)*
 Google Calendar API creates a prep event 24h before confirmed interviews.
 Event body contains: JD summary, recruiter name. Triggered from dashboard when user sets status to `interview`.
 
@@ -249,7 +253,7 @@ CREATE TABLE pipeline_runs (
 ```
 fetch_jobs()                         ← jobspy (Indeed/Google Jobs)
     └─► pre-filter (age/salary/visa/company)
-         └─► filter_new()            ← SHA-256 dedup (+ DB rejection cooldown: Phase 10)
+         └─► filter_new()            ← SHA-256 dedup (+ DB rejection cooldown: Phase 11)
               └─► score_jobs()       ← Claude Haiku
                    └─► route_jobs()
                         ├─► human_review  → DB + Telegram alert
@@ -263,7 +267,7 @@ gmail_monitor()                      ← Gmail API (google-api-python-client)
          └─► update status → phone_screen → Telegram alert
 
 [on dashboard action: interview confirmed]
-schedule_interview_prep()            ← Google Calendar API (Phase 9)
+schedule_interview_prep()            ← Google Calendar API (Phase 10)
     └─► create prep event 24h before
 ```
 
@@ -273,11 +277,12 @@ schedule_interview_prep()            ← Google Calendar API (Phase 9)
 
 | Service | Purpose | MCP? | Auth |
 |---------|---------|------|------|
-| jobspy | Multi-platform job scraping | Python lib | None |
+| jobspy | Indeed job scraping | Python lib | None |
+| JSearch (RapidAPI) | Google for Jobs index — aggregates Greenhouse/Lever/Workday/company sites | httpx | RapidAPI key |
 | Anthropic API | Claude Haiku — job scoring and Gmail email classification | SDK | API key |
 | Playwright MCP | LLM-driven auto-apply browser | MCP | None |
 | Gmail API | Inbox monitoring, email classification, status updates | google-api-python-client | Google OAuth |
-| Google Calendar MCP | Interview prep automation (Phase 9) | MCP | Google OAuth |
+| Google Calendar MCP | Interview prep automation (Phase 10) | MCP | Google OAuth |
 | Telegram Bot API | Alerts | httpx | Bot token |
 | PostgreSQL | Primary state store | — | Connection string |
 | Redis | Rate counters, dedup cache | — | Connection string |

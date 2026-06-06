@@ -69,7 +69,7 @@ Missing required keys must fail loudly on startup — no silent fallbacks.
 
 | Category | Examples |
 |----------|---------|
-| API keys | `ANTHROPIC_API_KEY` |
+| API keys | `ANTHROPIC_API_KEY`, `RAPIDAPI_KEY` |
 | Tokens | `TELEGRAM_BOT_TOKEN` |
 | Credentials | `INDEED_EMAIL`, `INDEED_PASSWORD` |
 | OAuth | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` |

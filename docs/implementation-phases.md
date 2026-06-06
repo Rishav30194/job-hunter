@@ -314,7 +314,7 @@ print('Result:', result)
 
 **Gmail API directly — not Gmail MCP.** Same decision as Phase 7 (Python Playwright over
 Playwright MCP): direct API gives full control, no MCP server process to manage, same
-Google OAuth credentials used by Phase 9 (Calendar).
+Google OAuth credentials used by Phase 10 (Calendar).
 
 **Cost: ~$0.15–$0.60/month** (Haiku classification on ~10–40 emails/day at ~$0.0005/email).
 
@@ -402,7 +402,58 @@ actions still complete, DB update skipped with a warning log.
 
 ---
 
-## Phase 9 — Interview Calendar Automation
+## Phase 9 — JSearch Integration
+> Add Google for Jobs data via JSearch (RapidAPI) as a second ingestion source alongside Indeed.
+
+**Why:** jobspy's Google Jobs scraper is broken in v1.1.82 ("initial cursor not found").
+JSearch is a paid API wrapper around the same Google for Jobs index — structured, reliable,
+and aggregates listings from Greenhouse, Lever, Workday, and company career pages that
+Indeed often misses.
+
+**Free tier budget:** 200 requests/month free. At 1 call per pipeline run (every 6h):
+4 runs/day × 30 days = 120 calls/month — 80 requests buffer. Stay within this by making
+**exactly 1 JSearch call per run** with a broad query.
+
+**New secret required:** `RAPIDAPI_KEY` — get from rapidapi.com → JSearch → Subscribe (free tier).
+
+### Tasks
+- [ ] Get RapidAPI key and subscribe to JSearch (free tier)
+- [ ] Add `RAPIDAPI_KEY` to `.env`
+- [ ] `src/ingestion/fetcher.py` — add `_fetch_jsearch()` alongside existing jobspy fetch
+  - [ ] 1 call per run: `query="Senior Java Engineer"`, `num_pages=1`, `date_posted=3days`, `country=us`
+  - [ ] Normalize JSearch response fields to internal job dict format
+  - [ ] Merge deduped JSearch results into `all_jobs` before returning
+- [ ] Log source as `"jsearch"` in job dict so DB tracks origin
+
+### Field mapping (JSearch → internal dict)
+| JSearch field | Internal field |
+|---|---|
+| `job_title` | `title` |
+| `employer_name` | `company` |
+| `job_city` + `job_state` | `location` |
+| `job_employment_type` | `work_type` |
+| `job_min_salary` / `job_max_salary` | `salary_min` / `salary_max` |
+| `job_description` | `description` |
+| `job_apply_link` | `url` |
+| `job_posted_at_datetime_utc` | `posted_at` |
+
+### Testing
+```bash
+# Smoke test — should print 10 JSearch jobs from Google for Jobs index
+PYTHONPATH=. venv/bin/python -c "
+from src.ingestion.fetcher import fetch_jobs
+jobs = fetch_jobs()
+sources = {}
+for j in jobs:
+    sources[j.get('source', 'unknown')] = sources.get(j.get('source', 'unknown'), 0) + 1
+print('Jobs by source:', sources)
+# Expect: {'indeed': N, 'jsearch': ~10}
+"
+```
+
+---
+
+## Phase 10 — Interview Calendar Automation
 > Auto-create Google Calendar prep events when an interview is confirmed.
 
 ### Tasks
@@ -431,7 +482,7 @@ print('Calendar event ID:', event_id)
 
 ---
 
-## Phase 10 — Rejection Cooldown
+## Phase 11 — Rejection Cooldown
 > Prevent re-applying to companies that already rejected you within the last 90 days.
 
 **Implementation:** DB-only — no new MCP dependency. The `applications` table already records
@@ -456,7 +507,7 @@ print('Cooldown check works if recently-rejected company is filtered out')
 
 ---
 
-## Phase 11 — VPS Deployment
+## Phase 12 — VPS Deployment
 > Deploy the full stack to a cloud VPS and run 24/7.
 
 ### Tasks
@@ -496,6 +547,7 @@ curl http://localhost:8501                 # dashboard responds 200
 | 6 | Dashboard | ✅ Complete |
 | 7 | Auto-Apply (Playwright MCP) | ✅ Complete |
 | 8 | Gmail Feedback Loop (LinkedIn tracer dropped) | ✅ Complete |
-| 9 | Interview Calendar (Google Calendar API) | ⬜ Not Started |
-| 10 | Rejection Cooldown (DB-based) | ⬜ Not Started |
-| 11 | VPS Deployment | ⬜ Not Started |
+| 9 | JSearch Integration (Google for Jobs via RapidAPI) | ⬜ Not Started |
+| 10 | Interview Calendar (Google Calendar API) | ⬜ Not Started |
+| 11 | Rejection Cooldown (DB-based) | ⬜ Not Started |
+| 12 | VPS Deployment | ⬜ Not Started |

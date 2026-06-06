@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     redis_url: str = "redis://redis:6379/0"
 
+    rapidapi_key: str = ""         # JSearch (Google for Jobs) — Phase 9; skipped if empty
+
     indeed_email: str = ""
     indeed_password: str = ""
     resume_path: str = ""          # absolute local path to PDF resume for upload
