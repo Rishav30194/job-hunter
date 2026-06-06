@@ -1,7 +1,7 @@
 """Fetches job listings via jobspy and applies hard pre-filters before deduplication."""
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 from jobspy import scrape_jobs
@@ -145,7 +145,7 @@ def _apply_filters(jobs: list[dict]) -> list[dict]:
     Keeps jobs with missing salary or missing posted_at — lack of data is
     not a disqualification. Only explicit failures are filtered out.
     """
-    cutoff: date = (datetime.utcnow() - timedelta(hours=settings.job_max_age_hours)).date()
+    cutoff: date = (datetime.now(timezone.utc) - timedelta(hours=settings.job_max_age_hours)).date()
     results = []
 
     for job in jobs:

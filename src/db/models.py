@@ -46,7 +46,9 @@ class Job(Base):
     status: Mapped[str] = mapped_column(String(50), default="new", index=True)
     visa_disqualified: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # Recruiter fields — reserved for future outreach tracking (Phase 11+)
+    # Recruiter / outreach fields — columns retained in schema; LinkedIn outreach was dropped.
+    # recruiter_name is populated by future calendar/interview tracking.
+    # recruiter_linkedin_url, outreach_message, outreach_sent_at are currently unused.
     recruiter_name: Mapped[str | None] = mapped_column(String(255))
     recruiter_linkedin_url: Mapped[str | None] = mapped_column(Text)
     outreach_message: Mapped[str | None] = mapped_column(Text)

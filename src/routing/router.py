@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -23,8 +23,7 @@ def route_jobs(jobs: list[dict], session: Session) -> dict[str, list[dict]]:
     silently dropped. Overflow from auto-apply cap is archived.
     Returns a dict with keys: human_review, queued_apply, archived, disqualified.
     """
-    # Naive UTC midnight — matches the naive UTC datetimes stored in fetched_at.
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
     already_queued: int = session.scalar(
         select(func.count(Job.id)).where(

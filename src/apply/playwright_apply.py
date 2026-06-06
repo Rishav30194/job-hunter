@@ -57,8 +57,8 @@ _STRUCTURAL_ROLES  = {"heading", "paragraph", "text", "statictext"}
 _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
 # ---------------------------------------------------------------------------
-# Tool schemas — match Playwright MCP conventions so the agent can be swapped
-# to a native MCP setup later without prompt changes.
+# Tool schemas — Python-native browser tools; Claude drives the browser
+# via these rather than an external MCP server process.
 # ---------------------------------------------------------------------------
 _TOOLS: list[dict] = [
     {

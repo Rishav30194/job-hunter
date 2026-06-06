@@ -28,14 +28,10 @@ def _query_metrics() -> dict:
                 Job.status.in_(["applied", "phone_screen", "interview", "offer", "rejected"])
             )
         ) or 0
-        outreach = session.scalar(
-            select(func.count(Job.id)).where(Job.outreach_sent_at.isnot(None))
-        ) or 0
         interviews = session.scalar(
             select(func.count(Job.id)).where(Job.status == "interview")
         ) or 0
-    return dict(scanned=scanned, high_match=high_match, applied=applied,
-                outreach=outreach, interviews=interviews)
+    return dict(scanned=scanned, high_match=high_match, applied=applied, interviews=interviews)
 
 
 def _query_human_review() -> list[dict]:
@@ -154,14 +150,13 @@ try:
 except Exception as _db_err:
     _db_ok = False
     st.error(f"Database unavailable — {_db_err.__class__.__name__}: {_db_err}")
-    metrics = dict(scanned=0, high_match=0, applied=0, outreach=0, interviews=0)
+    metrics = dict(scanned=0, high_match=0, applied=0, interviews=0)
 
-c1, c2, c3, c4, c5 = st.columns(5)
+c1, c2, c3, c4 = st.columns(4)
 c1.metric("Scanned", metrics["scanned"])
 c2.metric("High Match (≥85)", metrics["high_match"])
 c3.metric("Applied", metrics["applied"])
-c4.metric("Outreach Sent", metrics["outreach"])
-c5.metric("Interviews", metrics["interviews"])
+c4.metric("Interviews", metrics["interviews"])
 
 st.divider()
 
