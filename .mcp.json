@@ -8,52 +8,6 @@
       }
     },
 
-    "brave-search": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
-      "env": {
-        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
-      }
-    },
-
-    "memory": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory"]
-    },
-
-    "fetch": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-fetch"]
-    },
-
-    "linkedin": {
-      "command": "docker",
-      "args": [
-        "run", "--rm", "-i",
-        "-e", "LINKEDIN_EMAIL=${LINKEDIN_EMAIL}",
-        "-e", "LINKEDIN_PASSWORD=${LINKEDIN_PASSWORD}",
-        "ghcr.io/stickerdaniel/linkedin-mcp-server:latest"
-      ]
-    },
-
-    "notion": {
-      "command": "npx",
-      "args": ["-y", "@notionhq/notion-mcp-server"],
-      "env": {
-        "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer ${NOTION_API_KEY}\", \"Notion-Version\": \"2022-06-28\"}"
-      }
-    },
-
-    "gmail": {
-      "command": "npx",
-      "args": ["-y", "@gongrzhe/server-gmail-autoauth-mcp"],
-      "env": {
-        "GOOGLE_CLIENT_ID": "${GOOGLE_CLIENT_ID}",
-        "GOOGLE_CLIENT_SECRET": "${GOOGLE_CLIENT_SECRET}",
-        "GOOGLE_REFRESH_TOKEN": "${GOOGLE_REFRESH_TOKEN}"
-      }
-    },
-
     "google-calendar": {
       "command": "npx",
       "args": ["-y", "@cocal/google-calendar-mcp"],

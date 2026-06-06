@@ -69,9 +69,9 @@ Missing required keys must fail loudly on startup — no silent fallbacks.
 
 | Category | Examples |
 |----------|---------|
-| API keys | `ANTHROPIC_API_KEY`, `BRAVE_API_KEY` |
-| Tokens | `TELEGRAM_BOT_TOKEN`, `NOTION_API_KEY` |
-| Credentials | `LINKEDIN_EMAIL`, `LINKEDIN_PASSWORD` |
+| API keys | `ANTHROPIC_API_KEY` |
+| Tokens | `TELEGRAM_BOT_TOKEN` |
+| Credentials | `INDEED_EMAIL`, `INDEED_PASSWORD` |
 | OAuth | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` |
 | DB | `DATABASE_URL`, `POSTGRES_PASSWORD`, `REDIS_URL` |
 | Personal | `TELEGRAM_CHAT_ID`, any email or phone number |
