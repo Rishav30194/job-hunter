@@ -9,6 +9,7 @@ Architecture:
 
 import html
 import logging
+import sys
 from pathlib import Path
 
 import anthropic
@@ -26,8 +27,9 @@ _MAX_ITERATIONS = 40
 _MAX_SNAPSHOT_CHARS = 8_000
 _APPLY_MODEL = "claude-haiku-4-5-20251001"
 
-# Sentinel returned by tools when Indeed redirects to a login page.
-_SESSION_EXPIRED = "__SESSION_EXPIRED__"
+# Sentinels returned by browser tools to signal special conditions.
+_SESSION_EXPIRED    = "__SESSION_EXPIRED__"
+_CLOUDFLARE_BLOCKED = "__CLOUDFLARE_BLOCKED__"
 
 # URL substrings that indicate Indeed has redirected to a login/auth page.
 _LOGIN_URL_PATTERNS = {
@@ -36,6 +38,10 @@ _LOGIN_URL_PATTERNS = {
     "accounts.google.com/o/oauth2",
     "smartapply.indeed.com/account/login",
 }
+
+# Page titles that indicate a Cloudflare bot-detection interstitial.
+# These pages cannot be bypassed by headless Playwright — route to manual queue.
+_CLOUDFLARE_TITLES = {"additional verification required", "just a moment..."}
 
 # Realistic Chrome on macOS user-agent — reduces headless fingerprinting.
 _USER_AGENT = (
@@ -226,10 +232,17 @@ def apply_to_job(job: dict) -> str:
 
 def _launch_browser(playwright) -> tuple[BrowserContext, Page]:
     """Launch a stealth Chromium instance and restore the Indeed session."""
+    launch_args = [
+        "--disable-blink-features=AutomationControlled",
+    ]
+    # --no-sandbox and --disable-dev-shm-usage are required when Chromium runs
+    # as root inside a Docker Linux container; harmless to add on Linux generally.
+    if sys.platform == "linux":
+        launch_args += ["--no-sandbox", "--disable-dev-shm-usage"]
+
     browser = playwright.chromium.launch(
         headless=settings.playwright_headless,
-        # Suppress the navigator.webdriver flag that sites use for bot detection.
-        args=["--disable-blink-features=AutomationControlled"],
+        args=launch_args,
     )
     kwargs: dict = {
         "viewport": {"width": 1280, "height": 900},
@@ -292,12 +305,16 @@ def _run_agent_loop(page: Page, job: dict) -> str:
                 continue
             result_text = _execute_tool(page, ref_map, block.name, block.input)
 
-            # Detect session expiry immediately — no point continuing the loop.
+            # Detect unrecoverable conditions immediately — no point continuing the loop.
             if result_text == _SESSION_EXPIRED:
                 return (
                     "apply_failed: session_expired — "
                     "run PYTHONPATH=. venv/bin/python src/apply/setup_session.py"
                 )
+            if result_text == _CLOUDFLARE_BLOCKED:
+                # Cannot bypass Cloudflare Turnstile in headless mode.
+                # Return skipped so the job stays queued_apply for manual apply.
+                return "skipped"
 
             logger.debug("Tool %s(%s) → %s", block.name, block.input.get("element", ""), result_text[:120])
             tool_results.append({
@@ -364,12 +381,27 @@ def _is_login_page(url: str) -> bool:
     return any(pattern in url for pattern in _LOGIN_URL_PATTERNS)
 
 
+def _is_cloudflare_page(page: Page) -> bool:
+    """Return True when Cloudflare's bot-detection interstitial is shown.
+
+    Detected by page title — the URL stays at the original job URL so
+    URL-matching doesn't work here.
+    """
+    try:
+        return page.title().lower().strip() in _CLOUDFLARE_TITLES
+    except Exception:
+        return False
+
+
 def _tool_navigate(page: Page, url: str) -> str:
     if "indeed.com" not in url:
         return "Error: navigation restricted to indeed.com URLs only."
     page.goto(url, wait_until="domcontentloaded", timeout=30_000)
     if _is_login_page(page.url):
         return _SESSION_EXPIRED
+    if _is_cloudflare_page(page):
+        logger.info("Cloudflare bot-check detected on %s — routing to manual queue", url)
+        return _CLOUDFLARE_BLOCKED
     return f"Navigated to {url} — title: {page.title()}"
 
 
@@ -377,6 +409,9 @@ def _tool_snapshot(page: Page, ref_map: dict) -> str:
     """Build a capped text accessibility tree and populate ref_map for element lookup."""
     if _is_login_page(page.url):
         return _SESSION_EXPIRED
+    if _is_cloudflare_page(page):
+        logger.info("Cloudflare bot-check detected on %s — routing to manual queue", page.url)
+        return _CLOUDFLARE_BLOCKED
 
     ref_map.clear()
     counter = [0]

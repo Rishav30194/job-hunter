@@ -37,3 +37,8 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Runtime data — never commit session cookies, resume, or failure screenshots
+data/indeed_session.json
+data/*.pdf
+data/screenshots/
