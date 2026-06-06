@@ -113,21 +113,22 @@ The anti-bot landscape is also an ongoing arms race — any workaround that work
 stop working within weeks.
 
 **Decision:** auto-apply only where confidence is high (Indeed Easy Apply). All other
-jobs — Workday portals, company career sites — are routed to `human_review` with a direct
-URL so the user can apply in one click from the dashboard. This is reliable and sustainable;
-trying to automate Workday at Tier-1 banks is not.
+jobs — Workday portals, company career sites — remain at `queued_apply` and surface in
+the dashboard's Manual Apply Queue with a direct URL for one-click manual apply.
+This is reliable and sustainable; trying to automate Workday at Tier-1 banks is not.
 
 ---
 
 ## Components
 
 ### `src/ingestion/fetcher.py`
-Wraps `jobspy.scrape_jobs()` across 5 search terms × 4 platforms. Applies hard pre-filters
+Wraps `jobspy.scrape_jobs()` across 5 search terms × 2 platforms (Indeed, Google Jobs).
+Glassdoor and ZipRecruiter were dropped — unreliable scraping. Applies hard pre-filters
 (age ≤ 48h, salary ≥ $100K, visa rejection text, excluded companies).
 
 ### `src/ingestion/deduplicator.py`
-SHA-256 hash dedup against Postgres. Also queries Memory MCP for past rejections —
-skips reapplying to companies that rejected within the past 90 days.
+SHA-256 hash dedup against Postgres. Will also query Memory MCP for past rejections
+to skip companies in a 90-day cooldown *(Memory MCP integration: Phase 11)*.
 
 ### `data/companies.py`
 Three-tier company list sourced from MyVisaJobs FY2025 H1B LCA data (same DOL source as
@@ -214,7 +215,7 @@ CREATE TABLE jobs (
     company_health_score INTEGER,                    -- from Brave Search MCP
     score                INTEGER,
     score_reasoning      TEXT,
-    status               VARCHAR(50) DEFAULT 'new',  -- new/human_review/queued_apply/applied/archived/disqualified/apply_failed/phone_screen/interview/offer/rejected
+    status               VARCHAR(50) DEFAULT 'new',  -- new/human_review/queued_apply/applied/archived/disqualified/skipped/apply_failed/phone_screen/interview/offer/rejected
     visa_disqualified    BOOLEAN DEFAULT FALSE,
     recruiter_name       VARCHAR(255),
     recruiter_linkedin_url TEXT,
@@ -257,8 +258,8 @@ CREATE TABLE pipeline_runs (
 ```
 fetch_jobs()                         ← jobspy (Indeed/Google Jobs)
     └─► pre-filter (age/salary/visa/company)
-         └─► filter_new()            ← SHA-256 dedup + Memory MCP rejection guard
-              └─► research_companies() ← Brave Search MCP + Fetch MCP
+         └─► filter_new()            ← SHA-256 dedup (+ Memory MCP rejection guard: Phase 11)
+              └─► research_companies() ← Brave Search MCP + Fetch MCP (Phase 9)
                    └─► score_jobs()  ← Claude Haiku (enriched prompt)
                         └─► route_jobs()
                              ├─► human_review  → DB + Telegram alert

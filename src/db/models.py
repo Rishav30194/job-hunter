@@ -13,8 +13,9 @@ class Job(Base):
     """
     One row per unique job listing (company + title + location).
     Status lifecycle:
-      new → human_review / queued_apply / linkedin_easy_apply / archived / disqualified
-      queued_apply / linkedin_easy_apply → applied / apply_failed
+      new → human_review / queued_apply / archived / disqualified
+      human_review → queued_apply (approved) / skipped
+      queued_apply → applied / apply_failed
       applied → phone_screen → interview → offer / rejected
     """
     __tablename__ = "jobs"
