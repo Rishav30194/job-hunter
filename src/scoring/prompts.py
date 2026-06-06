@@ -215,9 +215,8 @@ def build_system_prompt() -> str:
 def build_user_prompt(job: dict) -> str:
     """Return the user prompt for a single job.
 
-    Truncates description to 3,000 characters — long enough to capture visa
-    rejection phrases and tech stack details that often appear late in JDs,
-    while keeping per-job token cost low for Haiku.
+    Truncates description to 3,000 characters. This is the single authoritative
+    truncation point — scorer.py does not pre-truncate.
     """
     description = job.get("description") or ""
     if len(description) > 3000:

@@ -122,12 +122,19 @@ def _job_to_dict(job: Job) -> dict:
 # ---------------------------------------------------------------------------
 
 def _approve_job(job_id: str) -> None:
-    """Move job to queued_apply and create an Application row for tracking."""
+    """Move job to queued_apply and create an Application row for tracking.
+
+    Idempotent — safe to call more than once; does not create duplicate Application rows.
+    """
     with get_session() as session:
         job = session.get(Job, job_id)
-        if job:
+        if job and job.status != "queued_apply":
             job.status = "queued_apply"
-            session.add(Application(job_id=job_id, method="manual_approve"))
+            existing = session.scalars(
+                select(Application).where(Application.job_id == job_id)
+            ).first()
+            if not existing:
+                session.add(Application(job_id=job_id, method="manual_approve"))
 
 
 def _skip_job(job_id: str) -> None:
@@ -240,7 +247,7 @@ with tab_applied:
     })
     if funnel_df["Count"].sum() > 0:
         fig = px.funnel(funnel_df, x="Count", y="Stage")
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No applications yet.")
 
@@ -252,8 +259,12 @@ with tab_applied:
             ["title", "company", "location", "score", "status", "applied_at", "url"]
         ]
         df["applied_at"] = pd.to_datetime(df["applied_at"]).dt.strftime("%Y-%m-%d")
-        df["url"] = df["url"].apply(lambda u: f'<a href="{u}" target="_blank">Link</a>' if u else "")
-        st.dataframe(df, width="stretch", hide_index=True)
+        st.dataframe(
+            df,
+            column_config={"url": st.column_config.LinkColumn("Link", display_text="Open")},
+            use_container_width=True,
+            hide_index=True,
+        )
     else:
         st.info("No applications yet.")
 
@@ -295,7 +306,7 @@ with tab_all:
                         "salary_text", "work_type", "source", "fetched_at"]
         st.dataframe(
             df_all[mask][display_cols].reset_index(drop=True),
-            width="stretch",
+            use_container_width=True,
             hide_index=True,
         )
         st.caption(f"Showing {mask.sum()} of {len(df_all)} jobs")
@@ -321,7 +332,7 @@ with tab_analytics:
                                annotation_text="Human review (85)")
             fig_hist.add_vline(x=75, line_dash="dash", line_color="orange",
                                annotation_text="Auto-apply (75)")
-            st.plotly_chart(fig_hist, width="stretch")
+            st.plotly_chart(fig_hist, use_container_width=True)
         else:
             st.info("No scored jobs yet.")
 
@@ -337,6 +348,6 @@ with tab_analytics:
             df_time["date"] = pd.to_datetime(df_time["date"])
             fig_line = px.line(df_time, x="date", y="count",
                                labels={"date": "Date", "count": "Applications"})
-            st.plotly_chart(fig_line, width="stretch")
+            st.plotly_chart(fig_line, use_container_width=True)
         else:
             st.info("No applications over time yet.")

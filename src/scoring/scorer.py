@@ -62,9 +62,6 @@ def score_jobs(jobs: list[dict]) -> list[dict]:
     return results
 
 
-_MAX_DESCRIPTION_CHARS = 4_000
-
-
 @retry(
     retry=retry_if_exception_type((anthropic.RateLimitError, anthropic.APIStatusError)),
     wait=wait_exponential(multiplier=1, min=2, max=30),
@@ -76,10 +73,8 @@ def _score_one(job: dict) -> dict:
 
     Retries up to 3 times on rate limit or transient API errors with exponential backoff.
     Validates stop_reason and tool block presence before accessing the result.
+    Description truncation is handled inside build_user_prompt (3,000 chars).
     """
-    # Long descriptions push the tool-call output past max_tokens — truncate first.
-    if len(job.get("description") or "") > _MAX_DESCRIPTION_CHARS:
-        job = job | {"description": job["description"][:_MAX_DESCRIPTION_CHARS] + "…"}
 
     response = _client.messages.create(
         model="claude-haiku-4-5-20251001",

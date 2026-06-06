@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
@@ -35,7 +35,7 @@ class Job(Base):
     url: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str | None] = mapped_column(String(50))
     posted_at: Mapped[datetime | None] = mapped_column(DateTime)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Scoring
     company_health_score: Mapped[int | None] = mapped_column(Integer)
@@ -46,7 +46,7 @@ class Job(Base):
     status: Mapped[str] = mapped_column(String(50), default="new", index=True)
     visa_disqualified: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # Recruiter tracing (Phase 8)
+    # Recruiter fields — reserved for future outreach tracking (Phase 11+)
     recruiter_name: Mapped[str | None] = mapped_column(String(255))
     recruiter_linkedin_url: Mapped[str | None] = mapped_column(Text)
     outreach_message: Mapped[str | None] = mapped_column(Text)
@@ -65,7 +65,7 @@ class Application(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     job_id: Mapped[str] = mapped_column(String(36), ForeignKey("jobs.id"), index=True)
 
-    applied_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    applied_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     method: Mapped[str] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(50), default="submitted")
 
@@ -73,7 +73,7 @@ class Application(Base):
     calendar_event_id: Mapped[str | None] = mapped_column(String(255))
     offer_amount: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str | None] = mapped_column(Text)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class PipelineRun(Base):
@@ -81,7 +81,7 @@ class PipelineRun(Base):
     __tablename__ = "pipeline_runs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    ran_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    ran_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     jobs_fetched: Mapped[int] = mapped_column(Integer, default=0)
     jobs_new: Mapped[int] = mapped_column(Integer, default=0)
     jobs_scored: Mapped[int] = mapped_column(Integer, default=0)
