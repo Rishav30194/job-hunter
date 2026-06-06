@@ -12,7 +12,9 @@ Categories:
 """
 
 import base64
+import html
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 import anthropic
@@ -132,19 +134,45 @@ def _get_email_text(service, msg_id: str) -> tuple[str, str, str]:
 
 
 def _extract_body(payload: dict) -> str:
-    """Recursively extract plain text body from a Gmail message payload."""
+    """Recursively extract readable text from a Gmail message payload.
+
+    Prefers text/plain; falls back to text/html with tags stripped.
+    """
     mime_type = payload.get("mimeType", "")
+
     if mime_type == "text/plain":
-        data = payload.get("body", {}).get("data", "")
-        return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace") if data else ""
+        return _decode_part(payload)
 
     if mime_type.startswith("multipart/"):
+        # First pass: prefer plain text parts
+        for part in payload.get("parts", []):
+            if part.get("mimeType") == "text/plain":
+                text = _decode_part(part)
+                if text:
+                    return text
+        # Second pass: recurse into nested multipart or accept HTML
         for part in payload.get("parts", []):
             text = _extract_body(part)
             if text:
                 return text
 
+    if mime_type == "text/html":
+        raw = _decode_part(payload)
+        # Strip tags and collapse whitespace for readable plain text
+        no_tags = re.sub(r"<[^>]+>", " ", raw)
+        return re.sub(r"\s+", " ", no_tags).strip()
+
     return ""
+
+
+def _decode_part(payload: dict) -> str:
+    """Base64url-decode a Gmail message part body."""
+    data = payload.get("body", {}).get("data", "")
+    if not data:
+        return ""
+    # Gmail omits base64 padding — compute correct padding length
+    padded = data + "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode(padded).decode("utf-8", errors="replace")
 
 
 def _classify_email(subject: str, sender: str, body: str) -> dict:
@@ -173,9 +201,16 @@ def _mark_read(service, msg_id: str) -> None:
 
 
 def _star_message(service, msg_id: str) -> None:
-    """Star a message to flag it for manual attention."""
+    """Star a message and mark it read so it won't re-trigger on the next run.
+
+    Action items are starred so the user can find them in Gmail's Starred view.
+    Marking read prevents the same email from being re-classified and re-alerted
+    on every subsequent pipeline cycle.
+    """
     service.users().messages().modify(
-        userId="me", id=msg_id, body={"addLabelIds": ["STARRED"]}
+        userId="me",
+        id=msg_id,
+        body={"addLabelIds": ["STARRED"], "removeLabelIds": ["UNREAD"]},
     ).execute()
 
 
@@ -272,19 +307,23 @@ def _process_message(service, msg_id: str, stats: dict) -> None:
 
 def _handle_rejection(company: str, title: str, summary: str, matches: list[Job]) -> None:
     """Update DB for rejections and send Telegram alert."""
-    label = f"{title} @ {company}" if company else "(unknown position)"
+    parts = [p for p in [title, company] if p]
+    label = html.escape(" @ ".join(parts)) if parts else "(unknown position)"
 
     if len(matches) == 1:
         _update_job_status(matches[0].id, "rejected")
-        db_note = f"✅ DB updated → rejected for <b>{matches[0].title}</b> @ <b>{matches[0].company}</b>"
+        db_note = (
+            f"✅ DB updated → rejected for "
+            f"<b>{html.escape(matches[0].title)}</b> @ <b>{html.escape(matches[0].company)}</b>"
+        )
     elif len(matches) > 1:
-        db_note = f"⚠️ Ambiguous match ({len(matches)} jobs for {company}) — update DB manually"
+        db_note = f"⚠️ Ambiguous match ({len(matches)} jobs for {html.escape(company)}) — update DB manually"
     else:
         db_note = "ℹ️ No DB match (manually applied or already archived)"
 
     send_message(
         f"❌ <b>Rejection</b> — {label}\n"
-        f"{summary}\n\n"
+        f"{html.escape(summary)}\n\n"
         f"{db_note}"
     )
 
@@ -296,21 +335,24 @@ def _handle_action_item(
     icon = "📋" if category == "assessment" else "💬"
     label_map = {"assessment": "Assessment / Coding Test", "recruiter_reply": "Recruiter Reply"}
     label = label_map.get(category, category)
-    position = f"{title} @ {company}" if company else "(unknown position)"
+    parts = [p for p in [title, company] if p]
+    position = html.escape(" @ ".join(parts)) if parts else "(unknown position)"
 
     if len(matches) == 1:
-        db_note = f"Matched: <b>{matches[0].title}</b> @ <b>{matches[0].company}</b>"
+        db_note = (
+            f"Matched: <b>{html.escape(matches[0].title)}</b> @ <b>{html.escape(matches[0].company)}</b>"
+        )
         if category == "recruiter_reply":
             _update_job_status(matches[0].id, "phone_screen")
             db_note += " → status updated to phone_screen"
     elif len(matches) > 1:
-        db_note = f"⚠️ {len(matches)} possible matches for {company} — check inbox"
+        db_note = f"⚠️ {len(matches)} possible matches for {html.escape(company)} — check inbox"
     else:
         db_note = "No DB match — manually applied or unknown role"
 
     send_message(
         f"{icon} <b>{label}</b> — {position}\n"
-        f"{summary}\n\n"
+        f"{html.escape(summary)}\n\n"
         f"{db_note}\n"
-        f"<i>Email is starred in your inbox — reply needed</i>"
+        f"<i>Starred in Gmail — reply needed</i>"
     )
