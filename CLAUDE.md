@@ -89,6 +89,6 @@ Adding a new secret: add to `.env.example` → `config/settings.py` → this tab
 | Score 75–84 | Auto-apply queue (capped at 20/day) |
 | Score < 75 | Archived |
 | Visa filter | Skip only if JD explicitly rejects sponsorship |
-| Hard excluded company | Infosys / Infosys Limited (current employer) |
+| Hard excluded company | Infosys / Infosys Limited |
 | Auto-apply target | Indeed Easy Apply URLs only (`indeed.com`) |
 | Workday / Greenhouse / Oracle HCM | Never auto-apply — Cloudflare Bot Management blocks headless browsers reliably; routed to dashboard for one-click human apply |

@@ -64,7 +64,7 @@ jobs = fetch_jobs()
 new1 = filter_new(jobs, session)
 print(f'Round 1 new: {len(new1)}')
 new2 = filter_new(jobs, session)
-print(f'Round 2 new (equals round 1 — no DB writes in test; 0 only after pipeline persists): {len(new2)}')
+print(f'Round 2 new (matches round 1 — filter_new does not write to DB; 0 only after pipeline persists): {len(new2)}')
 "
 ```
 

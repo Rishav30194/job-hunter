@@ -6,9 +6,9 @@ An autonomous, 24/7 job search and application system tailored for a Senior Java
 targeting Tier-1 and Tier-2 tech and finance companies in the US job market.
 
 The system runs continuously on a VPS, fetches fresh job postings every 6 hours from multiple
-platforms (Indeed, Google Jobs), scores each posting using Claude AI against
-a detailed candidate profile, routes high-match jobs to a human review queue, and auto-applies
-to mid-match jobs — all without manual intervention.
+platforms (Indeed, Google Jobs), scores each posting using Claude AI against a detailed candidate
+profile, routes high-match jobs to a human review queue, and auto-applies to mid-match jobs —
+all without manual intervention.
 
 ## Goals
 
@@ -16,10 +16,10 @@ to mid-match jobs — all without manual intervention.
 |------|-----------|
 | Zero stale listings | Hard 48-hour cutoff on all fetched jobs |
 | Minimize human time | Auto-apply for score 75–84 (cap 20/day); human reviews top 5 per run (score ≥ 85) |
-| Maximum coverage | 5 search terms × Indeed + Google Jobs per run (Google aggregates Glassdoor/ZipRecruiter/LinkedIn) |
+| Maximum coverage | 5 search terms × Indeed + Google Jobs per run |
 | Smart filtering | Claude Haiku scores each job against actual resume |
 | Visa safety | Explicit "no sponsorship" text → auto-discard |
-| Recruiter reach | LinkedIn Premium tracing for every high-match job |
+| Inbox awareness | Gmail monitor classifies replies, updates status, alerts on action items |
 | Full visibility | Streamlit dashboard with funnel metrics and one-click actions |
 
 ## Target Profile
@@ -54,7 +54,7 @@ to mid-match jobs — all without manual intervention.
 - **Other Industries with Java engineering roles:** Walmart Global Tech, FedEx Technology, Ford Motor, General Motors, Cummins, Rivian, Lucid Motors, Eli Lilly, Target Tech, Wayfair, Chewy, Epic Systems, Veeva Systems, Tyler Technologies
 
 **Hard Excluded**
-- Infosys / Infosys Limited — current employer, do not apply
+- Infosys / Infosys Limited — hard-excluded (do not apply)
 
 ## What Gets Automated
 
@@ -64,18 +64,16 @@ to mid-match jobs — all without manual intervention.
 | Deduplication | ✅ Fully |
 | Visa sponsorship check | ✅ Fully |
 | AI scoring (0–100) | ✅ Fully |
-| Telegram alerts (high match) | ✅ Fully |
-| Auto-apply for Indeed Easy Apply jobs (score 75–84, cap 20/day) | ✅ Fully (Playwright MCP) |
-| One-click manual apply for Workday/Greenhouse/company sites | 🙋 Human (dashboard button, direct URL) |
-| Recruiter tracing | ✅ Fully (LinkedIn MCP) |
-| Outreach message drafting | ✅ Claude-generated |
+| Telegram alerts (high match + run summary) | ✅ Fully |
+| Gmail inbox monitoring (classify replies, update status) | ✅ Fully (Phase 8) |
+| Auto-apply for Indeed Easy Apply jobs (score 75–84, cap 20/day) | ✅ Fully (Phase 7) |
+| One-click manual apply for Workday/Greenhouse/company sites | 🙋 Human (dashboard button) |
 | Final approval for score ≥ 85 | 🙋 Human (one click in dashboard) |
-| Outreach send confirmation | 🙋 Human (one click in dashboard) |
 
 ## Non-Goals
 
 - Does not restrict scraping to specific companies — all listings are fetched and scored; tiers only affect score weighting
 - Does not apply to roles requiring security clearance
 - Does not attempt to automate Workday, Greenhouse, Lever, Oracle HCM, or any ATS behind Cloudflare Bot Management — those require human apply via dashboard
-- Does not bypass CAPTCHA or violate platform ToS for mass scraping
+- Does not bypass CAPTCHA or violate platform ToS
 - Does not store or log any secrets or credentials in code

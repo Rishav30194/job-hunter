@@ -93,8 +93,6 @@
 | `brave-search` | `@modelcontextprotocol/server-brave-search` | Company intelligence research | Brave API key |
 | `memory` | `@modelcontextprotocol/server-memory` | Persist past application/rejection memory | None |
 | `fetch` | `@modelcontextprotocol/server-fetch` | Scrape company career pages | None |
-| `linkedin` | ~~`stickerdaniel/linkedin-mcp-server`~~ | **Dropped** — bot detection risk, unreliable recruiter targeting | — |
-| `gmail` | ~~`@gongrzhe/server-gmail-autoauth-mcp`~~ | **Replaced by Gmail API directly** — same OAuth creds, no MCP server needed | Google OAuth |
 | `google-calendar` | `@cocal/google-calendar-mcp` | Auto-create interview prep events | Google OAuth |
 | `notion` | `@notionhq/notion-mcp-server` | Mirror pipeline to Notion Kanban board | Notion API key |
 
@@ -134,7 +132,7 @@ to skip companies in a 90-day cooldown *(Memory MCP integration: Phase 11)*.
 ### `data/companies.py`
 Three-tier company list sourced from MyVisaJobs FY2025 H1B LCA data (same DOL source as
 H1BGrader). Tier-1/2/3 sets used for scoring bonus. Hard-excluded set contains only
-Infosys / Infosys Limited (current employer) — all other companies are eligible.
+Infosys / Infosys Limited — all other companies are eligible.
 
 ### `src/intelligence/company_researcher.py` *(Phase 9)*
 Uses Brave Search MCP and Fetch MCP to research each company before scoring.
@@ -306,12 +304,11 @@ notion_sync()                        ← Notion MCP
 | Service | Purpose | MCP? | Auth |
 |---------|---------|------|------|
 | jobspy | Multi-platform job scraping | Python lib | None |
-| Anthropic API | Claude Haiku scoring / Sonnet drafting | SDK | API key |
+| Anthropic API | Claude Haiku — job scoring and Gmail email classification | SDK | API key |
 | Playwright MCP | LLM-driven auto-apply browser | MCP | None |
 | Brave Search MCP | Company intelligence | MCP | Brave API key |
 | Memory MCP | Rejection/application history | MCP | None |
 | Fetch MCP | Career page scraping | MCP | None |
-| LinkedIn MCP | ~~Recruiter tracing~~ — **dropped** | — | — |
 | Gmail API | Inbox monitoring, email classification, status updates | google-api-python-client | Google OAuth |
 | Google Calendar MCP | Interview prep automation | MCP | Google OAuth |
 | Notion MCP | Kanban pipeline mirror | MCP | Notion API key |
