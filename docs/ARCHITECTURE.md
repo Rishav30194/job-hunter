@@ -180,7 +180,13 @@ Syncs every pipeline run — Notion board always reflects Postgres state.
 httpx-based Telegram Bot API. High-match alert (top 10 + links) + run summary per cycle.
 
 ### `dashboard/app.py`
-Streamlit: Metrics · Human Queue (Approve/Skip) · Applied funnel · All Jobs · Analytics.
+Streamlit: Metrics · Human Queue · Applied funnel · All Jobs · Analytics.
+
+Human Queue tab has two sections:
+- **Review Queue** (`human_review`) — Approve (→ `queued_apply` + Application row) / Skip (→ `skipped`).
+- **Manual Apply Queue** (`queued_apply`, non-Indeed URL) — jobs Phase 7 cannot auto-apply to
+  (Workday/Greenhouse/Oracle blocked by Cloudflare). Shown with "Open & Apply" link button for
+  one-click manual apply. Status stays `queued_apply` until the user updates it.
 
 ### `src/scheduler.py` / `src/main.py`
 APScheduler BlockingScheduler firing `pipeline.run_pipeline()` every 6h, 24/7.

@@ -16,11 +16,13 @@ venv/bin/playwright install chromium
 docker compose up -d postgres redis
 venv/bin/alembic upgrade head
 
-venv/bin/python src/main.py              # scheduler — runs every 6h
-venv/bin/streamlit run dashboard/app.py  # dashboard on :8501
+venv/bin/python -m src.main              # scheduler — runs every 6h
+PYTHONPATH=. venv/bin/streamlit run dashboard/app.py  # dashboard on :8501
 ```
 
 > Always use `venv/bin/python`. System `python3` is 3.14 — wrong version.
+> Always prefix local runs with `PYTHONPATH=.` — Streamlit and direct `python` invocations
+> do not add the project root to `sys.path` automatically. Not needed inside Docker.
 
 ---
 

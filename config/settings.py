@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     max_auto_applies_per_day: int = 20
     max_human_review_per_run: int = 5
 
-    fetch_interval_hours: int = 6
+    fetch_interval_hours: float = 6
     job_max_age_hours: int = 48
     zero_result_alert_threshold: int = 3
 

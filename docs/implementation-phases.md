@@ -151,8 +151,8 @@ python -c "from src.pipeline import run_pipeline; run_pipeline()"
 > Wire APScheduler to run the pipeline every 6 hours, 24/7.
 
 ### Tasks
-- [ ] `src/scheduler.py` — APScheduler BlockingScheduler setup
-- [ ] `src/main.py` — init DB, start scheduler, handle shutdown
+- [x] `src/scheduler.py` — APScheduler BlockingScheduler setup
+- [x] `src/main.py` — init DB, start scheduler, handle shutdown
 
 ### Testing
 ```bash
@@ -169,14 +169,29 @@ FETCH_INTERVAL_HOURS=0.01 python src/main.py
 > Full tracking dashboard: metrics, human queue actions, applied funnel, analytics.
 
 ### Tasks
-- [ ] `dashboard/app.py`
-  - [ ] Metrics row: Scanned / High Match / Applied / Outreach / Interviews
-  - [ ] Tab: Human Queue — table with Approve / Skip buttons
-  - [ ] Tab: Applied — application status tracker with funnel view
-  - [ ] Tab: All Jobs — searchable/filterable full table
-  - [ ] Tab: Analytics — score distribution histogram, applications over time
-- [ ] Approve button → `status=approved`, creates Application row
-- [ ] Skip button → `status=skipped`
+- [x] `dashboard/app.py`
+  - [x] Metrics row: Scanned / High Match / Applied / Outreach / Interviews
+  - [x] Tab: Human Queue — two sections (see design note below)
+  - [x] Tab: Applied — application status tracker with funnel view
+  - [x] Tab: All Jobs — searchable/filterable full table
+  - [x] Tab: Analytics — score distribution histogram, applications over time
+- [x] Approve button → `status=queued_apply` (not `approved` — see design note), creates Application row
+- [x] Skip button → `status=skipped`
+
+### Design Note — Human Queue two-section layout
+The Human Queue tab has two sections:
+
+**Section 1 — Review Queue** (`status=human_review`)
+High-scoring jobs (≥85) waiting for human approval. Approve/Skip buttons per job.
+- Approve → `status=queued_apply` + creates `Application(method=manual_approve)` row.
+  `queued_apply` is the correct target (not `approved`) — it feeds into Phase 7's
+  auto-apply loop and is already handled by the router's daily cap logic.
+- Skip → `status=skipped` (terminal — ignored by all future pipeline runs).
+
+**Section 2 — Manual Apply Queue** (`status=queued_apply`, non-Indeed URL)
+Jobs on Workday / Greenhouse / Oracle HCM that Phase 7 will skip (Cloudflare blocks
+headless browsers on these platforms). Surfaced here with an "Open & Apply" link button
+so the user can apply in one click. Status stays `queued_apply` until manually updated.
 
 ### Testing
 ```bash
@@ -415,8 +430,8 @@ curl http://localhost:8501                 # dashboard responds 200
 | 2 | Ingestion | ✅ Complete |
 | 3 | LLM Scoring | ✅ Complete |
 | 4 | Routing & Notifications | ✅ Complete |
-| 5 | Scheduler | ⬜ Not Started |
-| 6 | Dashboard | ⬜ Not Started |
+| 5 | Scheduler | ✅ Complete |
+| 6 | Dashboard | ✅ Complete |
 | 7 | Auto-Apply (Playwright MCP) | ⬜ Not Started |
 | 8 | Recruiter Tracer + Gmail Feedback | ⬜ Not Started |
 | 9 | Company Intelligence (Brave Search MCP) | ⬜ Not Started |
