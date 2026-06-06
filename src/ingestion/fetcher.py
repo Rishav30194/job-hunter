@@ -25,6 +25,20 @@ SEARCH_TERMS: list[str] = [
 # Google Jobs aggregates listings from all three, so coverage loss is minimal.
 PLATFORMS: list[str] = ["indeed", "google"]
 
+# Title substrings that disqualify a listing before it reaches the scorer.
+# Lowercase-matched against the job title.
+EXCLUDED_TITLE_KEYWORDS: list[str] = [
+    "intern",
+    "internship",
+    "co-op",
+    "co op",
+    "student",
+    "graduate program",
+    "new grad",
+    "entry level",
+    "junior",
+]
+
 # Job descriptions containing any of these phrases are visa-disqualified.
 VISA_REJECTION_PHRASES: list[str] = [
     "will not sponsor",
@@ -145,6 +159,10 @@ def _apply_filters(jobs: list[dict]) -> list[dict]:
         if job["salary_min"] and not job["salary_max"] and job["salary_min"] < settings.min_salary:
             continue
 
+        # Title-based exclusion — interns, students, new grad programs
+        if _is_excluded_title(job["title"]):
+            continue
+
         # Hard-excluded company
         if is_excluded(job["company"]):
             continue
@@ -156,6 +174,14 @@ def _apply_filters(jobs: list[dict]) -> list[dict]:
         results.append(job)
 
     return results
+
+
+def _is_excluded_title(title: str | None) -> bool:
+    """Return True if the job title contains intern/student/junior keywords."""
+    if not title:
+        return False
+    lower = title.lower()
+    return any(kw in lower for kw in EXCLUDED_TITLE_KEYWORDS)
 
 
 def _is_visa_rejected(description: str | None) -> bool:

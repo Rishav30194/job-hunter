@@ -102,5 +102,6 @@ def _score_one(job: dict) -> dict:
     return job | {
         "score": result["score"],
         "score_reasoning": result["reasoning"],
-        "visa_disqualified": result["visa_disqualified"],
+        # Haiku occasionally omits this boolean despite it being required in the schema.
+        "visa_disqualified": result.get("visa_disqualified", False),
     }
