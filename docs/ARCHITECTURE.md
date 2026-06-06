@@ -173,10 +173,14 @@ tracing was dropped — unreliable recruiter targeting and LinkedIn account ban 
 the benefit (see Phase 8 decision note in implementation-phases.md).
 
 Classifies each unread email via Claude Haiku into: `confirmation` | `unimportant` |
-`rejection` | `assessment` | `recruiter_reply`. Marks confirmation/unimportant as read.
-Sends Telegram alert for assessment and recruiter_reply. Matches extracted company + job
-title against jobs table — updates DB on single match, alerts with all candidates on
-ambiguous match (multiple JPMorgan applications), still alerts on zero match (manual apply).
+`rejection` | `assessment` | `recruiter_reply`. All categories are marked read after
+processing. Action items (assessment, recruiter_reply) are also starred so they surface
+in Gmail's Starred view. Sends Telegram alert for rejection, assessment, recruiter_reply.
+DB auto-update requires `confident=True` AND both company and title extracted — prevents
+a misclassified newsletter from silently mutating a live application's status. Matches
+extracted company + title against jobs table (starts-with ILIKE, statuses: applied /
+phone_screen / interview) — updates DB on confident single match, alerts on ambiguous
+match or zero match.
 
 ### `src/calendar/interview_scheduler.py` *(Phase 10)*
 Google Calendar MCP creates a prep event 24h before confirmed interviews.

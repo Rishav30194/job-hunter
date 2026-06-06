@@ -255,8 +255,8 @@ missing (run `setup_session.py` first). Session cookies persisted after each suc
   in `queued_apply` for manual apply from dashboard. No Telegram noise, no `apply_failed`.
 - `visa_disqualified` KeyError: Haiku occasionally omits required booleans from tool output —
   fixed with `.get("visa_disqualified", False)` defensive access.
-- `max_tokens` crash on long JDs: descriptions truncated to 4000 chars before API call,
-  `max_tokens` raised 300 → 512.
+- `max_tokens` crash on long JDs: `max_tokens` raised 300 → 512. Description truncation is
+  handled exclusively in `build_user_prompt()` at 3,000 chars (single authoritative point).
 
 ### Tasks
 - [x] Install: `@playwright/mcp@0.0.75` already registered in `.mcp.json`
@@ -326,21 +326,28 @@ Google OAuth credentials used by Phase 10 (Calendar).
 |---|---|---|
 | `confirmation` | Mark read | None |
 | `unimportant` | Mark read | None |
-| `rejection` | Keep unread + Telegram | `status=rejected` if matched |
-| `assessment` | Keep unread + Telegram alert | None (user must act) |
-| `recruiter_reply` | Keep unread + Telegram alert | `status=phone_screen` if matched |
+| `rejection` | Mark read + Telegram alert | `status=rejected` if confident match |
+| `assessment` | Star + mark read + Telegram alert | None (user must act) |
+| `recruiter_reply` | Star + mark read + Telegram alert | `status=phone_screen` if confident match |
+
+Action items (assessment, recruiter_reply) are **starred so the user finds them in Gmail's
+Starred view**, then marked read so they don't re-trigger on the next 6h pipeline cycle.
 
 Classification is content-based — sender address alone is not sufficient. An email from
 `noreply@company.com` containing an assessment link is `assessment`, not `confirmation`.
-Claude Haiku reads subject + first 500 chars of body and returns: category, extracted
-company name, extracted job title (if mentioned), has_action_link boolean.
+Claude Haiku reads subject + first 2,000 chars + last 1,000 chars of body (head+tail so
+decisions buried at the bottom of long ATS emails are not missed). Returns: `category`,
+`company`, `job_title`, `summary`, and `confident` (boolean).
 
 ### Inbox matching logic (JPMorgan dilemma)
 
-1. Extract company + job title from email via LLM
-2. Query: `WHERE company ILIKE '{company}%' AND status = 'applied'`
+1. Extract company + job title from email via LLM (with `confident` flag)
+2. Query: `WHERE company ILIKE '{company}%' AND status IN ('applied','phone_screen','interview')`
+   Uses starts-with ILIKE (not contains) to reduce false-matches from newsletter mentions.
 3. Three outcomes:
-   - **1 match** → update that specific job's status
+   - **1 match + confident=True + both company & title extracted** → auto-update status in DB
+   - **1 match but confident=False or title missing** → Telegram alert only, DB not touched
+     ("Low confidence — verify and update manually")
    - **Multiple matches** → Telegram alert listing all candidates, no auto-update
      ("Reply from JPMorgan — 3 open applications, check dashboard")
    - **0 matches** → still alert ("Recruiter reply from Stripe — not in DB,
@@ -350,7 +357,7 @@ company name, extracted job title (if mentioned), has_action_link boolean.
 
 1. console.cloud.google.com → create project → enable Gmail API
 2. Credentials → Create → OAuth client ID → Desktop app
-3. Add `rishav30194@gmail.com` to Test Users (app stays in testing mode)
+3. Add your Gmail address to Test Users (app stays in testing mode — required until Google verifies the app)
 4. Copy `client_id` and `client_secret` to `.env`
 5. Run `PYTHONPATH=. venv/bin/python src/feedback/setup_gmail.py` — opens browser,
    you click Allow, refresh token saved to `.env` automatically
