@@ -36,8 +36,12 @@ npx -y @modelcontextprotocol/server-memory --version
 
 ### Tasks
 - [x] `data/companies.py` — Tier-1/Tier-2/Tier-3 target company list
-- [x] `src/ingestion/fetcher.py` — jobspy wrapper, visa/salary/age/company filters
+- [x] `src/ingestion/fetcher.py` — jobspy wrapper, visa/salary/age/company/title filters
 - [x] `src/ingestion/deduplicator.py` — SHA-256 hash dedup against Postgres
+
+### Post-launch fixes
+- Title keyword filter added: intern, internship, co-op, student, graduate program,
+  new grad, entry level, junior — filtered before reaching scorer to avoid wasted API calls.
 
 ### Testing
 ```bash
@@ -238,12 +242,21 @@ Claude reads the page fresh on every step — no selectors, no hardcoded field n
 Cost: ~$0.003–0.01 per application with Haiku. Negligible vs. the value of correct answers.
 
 **New settings required** (added to `config/settings.py`):
-- `indeed_email: str = ""` — Indeed account email for login
-- `indeed_password: str = ""` — Indeed account password
-- `resume_path: str = ""` — absolute local path to PDF resume for upload
+- `indeed_email: str = ""` — Indeed account email (used in agent system prompt context)
+- `indeed_password: str = ""` — optional (not required for Google OAuth users)
+- `resume_path: str = ""` — absolute path to PDF resume inside Docker (`/app/data/resume.pdf`)
 
-If any of these are empty, `apply_to_job()` returns `skipped` with a warning log.
-Session cookies are persisted to `data/indeed_session.json` to avoid re-login each run.
+Pre-checks: skip if `indeed_email` or `resume_path` not set, or if `data/indeed_session.json`
+missing (run `setup_session.py` first). Session cookies persisted after each successful apply.
+
+**Post-launch findings:**
+- Cloudflare Turnstile blocks headless Chromium on all Indeed job pages in Docker — detected
+  by page title ("Additional Verification Required"), job returned as `skipped` so it stays
+  in `queued_apply` for manual apply from dashboard. No Telegram noise, no `apply_failed`.
+- `visa_disqualified` KeyError: Haiku occasionally omits required booleans from tool output —
+  fixed with `.get("visa_disqualified", False)` defensive access.
+- `max_tokens` crash on long JDs: descriptions truncated to 4000 chars before API call,
+  `max_tokens` raised 300 → 512.
 
 ### Tasks
 - [x] Install: `@playwright/mcp@0.0.75` already registered in `.mcp.json`
@@ -289,40 +302,96 @@ print('Result:', result)
 
 ---
 
-## Phase 8 — Recruiter Tracer + Gmail Feedback Loop
-> Find recruiters via LinkedIn MCP and detect their replies via Gmail MCP.
+## Phase 8 — Gmail Feedback Loop
+> Monitor inbox for recruiter replies, auto-update job status, clean up noise.
+
+**LinkedIn recruiter tracing — dropped.** Decision rationale:
+- Finding the correct hiring manager for a specific req is not reliably automatable
+  (searching "recruiter" at JPMorgan returns 200+ people; no way to match to a specific req)
+- LinkedIn's bot detection is aggressive even with Premium — account ban risk is real
+- Mass automated outreach is recognisable as spam; diminishing returns at Tier-1 companies
+- The implementation complexity and maintenance cost outweigh the uncertain benefit
+
+**Gmail API directly — not Gmail MCP.** Same decision as Phase 7 (Python Playwright over
+Playwright MCP): direct API gives full control, no MCP server process to manage, same
+Google OAuth credentials used by Phase 10 (Calendar).
+
+**Cost: ~$0.15–$0.60/month** (Haiku classification on ~10–40 emails/day at ~$0.0005/email).
+
+---
+
+### Email classification — 5 categories
+
+| Category | Action | DB update |
+|---|---|---|
+| `confirmation` | Mark read | None |
+| `unimportant` | Mark read | None |
+| `rejection` | Keep unread + Telegram | `status=rejected` if matched |
+| `assessment` | Keep unread + Telegram alert | None (user must act) |
+| `recruiter_reply` | Keep unread + Telegram alert | `status=phone_screen` if matched |
+
+Classification is content-based — sender address alone is not sufficient. An email from
+`noreply@company.com` containing an assessment link is `assessment`, not `confirmation`.
+Claude Haiku reads subject + first 500 chars of body and returns: category, extracted
+company name, extracted job title (if mentioned), has_action_link boolean.
+
+### Inbox matching logic (JPMorgan dilemma)
+
+1. Extract company + job title from email via LLM
+2. Query: `WHERE company ILIKE '{company}%' AND status = 'applied'`
+3. Three outcomes:
+   - **1 match** → update that specific job's status
+   - **Multiple matches** → Telegram alert listing all candidates, no auto-update
+     ("Reply from JPMorgan — 3 open applications, check dashboard")
+   - **0 matches** → still alert ("Recruiter reply from Stripe — not in DB,
+     likely a manual application")
+
+### Google OAuth setup (one-time)
+
+1. console.cloud.google.com → create project → enable Gmail API
+2. Credentials → Create → OAuth client ID → Desktop app
+3. Add `rishav30194@gmail.com` to Test Users (app stays in testing mode)
+4. Copy `client_id` and `client_secret` to `.env`
+5. Run `PYTHONPATH=. venv/bin/python src/feedback/setup_gmail.py` — opens browser,
+   you click Allow, refresh token saved to `.env` automatically
+
+**Gmail scopes required:** `gmail.modify` (read + mark-as-read). Read-only is insufficient.
 
 ### Tasks
-- [ ] **LinkedIn MCP** — recruiter tracing
-  - [ ] `src/recruiter/tracer.py`
-  - [ ] Search company employees with "recruiter" / "hiring manager" / "talent" titles
-  - [ ] Rank by relevance (tech recruiting > general HR)
-  - [ ] Claude Sonnet drafts personalized outreach from JD context
-  - [ ] Store recruiter info + message draft in DB
-  - [ ] Dashboard shows draft for human approval before send
-
-- [ ] **Gmail MCP** — reply detection
-  - [ ] `src/feedback/gmail_monitor.py`
-  - [ ] Poll inbox every pipeline run
-  - [ ] Match sender domain → applied company
-  - [ ] On match: update job `status=phone_screen`, send Telegram alert
-  - [ ] Store reply snippet in job notes field
+- [ ] `src/feedback/__init__.py`
+- [ ] `src/feedback/setup_gmail.py` — one-time OAuth flow; saves refresh token to `.env`
+- [ ] `src/feedback/gmail_monitor.py`
+  - [ ] Authenticate via OAuth refresh token (google-api-python-client)
+  - [ ] Fetch unread emails from last 24h
+  - [ ] Step 1: filter obvious automated senders (noreply, donotreply, known ATS domains)
+  - [ ] Step 2: Haiku classify remaining emails → 5 categories
+  - [ ] Step 3: domain-match extracted company against jobs table
+  - [ ] Step 4: apply action per category (mark read / Telegram alert / DB update)
+  - [ ] Mark `confirmation` and `unimportant` as read via Gmail API
+  - [ ] Send Telegram for `recruiter_reply`, `assessment`, `rejection`
+  - [ ] Update job status in DB for matched emails
+- [ ] `config/settings.py` — add `google_client_id`, `google_client_secret`, `google_refresh_token`
+- [ ] `.env.example` — document Gmail OAuth fields
+- [ ] Integrate `check_gmail()` into `pipeline.py` — runs every pipeline cycle
+- [ ] `requirements.txt` — add `google-api-python-client`, `google-auth-oauthlib`
 
 ### Testing
 ```bash
-# Recruiter trace
-python -c "
-from src.recruiter.tracer import trace_recruiter
-result = trace_recruiter({'company': 'JPMorgan Chase', 'title': 'Senior Software Engineer', 'id': 'test-001'})
-print('Recruiter:', result.get('recruiter_name'))
-print('Draft:', result.get('outreach_message', '')[:200])
+# One-time OAuth setup
+PYTHONPATH=. venv/bin/python src/feedback/setup_gmail.py
+
+# Smoke test (lists what it would do, no side effects)
+PYTHONPATH=. venv/bin/python -c "
+from src.feedback.gmail_monitor import check_gmail
+results = check_gmail(dry_run=True)
+for r in results:
+    print(r['category'], '|', r['from'], '|', r['subject'][:60])
 "
 
-# Gmail monitor (verify OAuth first via .env)
-python -c "
-from src.feedback.gmail_monitor import check_recruiter_replies
-replies = check_recruiter_replies()
-print(f'Detected {len(replies)} recruiter replies')
+# Live run (marks emails, updates DB, sends Telegram)
+PYTHONPATH=. venv/bin/python -c "
+from src.feedback.gmail_monitor import check_gmail
+check_gmail()
 "
 ```
 
@@ -462,7 +531,7 @@ curl http://localhost:8501                 # dashboard responds 200
 | 5 | Scheduler | ✅ Complete |
 | 6 | Dashboard | ✅ Complete |
 | 7 | Auto-Apply (Playwright MCP) | ✅ Complete |
-| 8 | Recruiter Tracer + Gmail Feedback | ⬜ Not Started |
+| 8 | Gmail Feedback Loop (LinkedIn tracer dropped) | 🔄 In Progress (awaiting Google OAuth credentials) |
 | 9 | Company Intelligence (Brave Search MCP) | ⬜ Not Started |
 | 10 | Interview Calendar (Google Calendar MCP) | ⬜ Not Started |
 | 11 | Memory + Notion Sync | ⬜ Not Started |

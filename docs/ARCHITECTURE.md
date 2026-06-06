@@ -45,20 +45,21 @@
 │  │  disqualified ──► Discarded                                       │   │
 │  └──────┬──────────────────────────┬─────────────────────────────────┘   │
 │         │                          │                                      │
-│  ┌──────▼──────────────┐  ┌────────▼────────────────────────────────┐    │
-│  │   RECRUITER TRACER  │  │          AUTO-APPLY  [UPGRADED]         │    │
-│  │  LinkedIn MCP       │  │  Playwright MCP (Microsoft, 33K stars)  │    │
-│  │  Find hiring mgr /  │  │  LLM drives browser via accessibility   │    │
-│  │  tech recruiter     │  │  snapshots — survives UI changes        │    │
-│  │  Claude Sonnet      │  │  Daily cap: 20/day · cover via Claude   │    │
-│  │  drafts outreach    │  └─────────────────────────────────────────┘    │
-│  └──────┬──────────────┘                                                 │
+│  ┌──────▼──────────────────────────────────────────────────────────┐     │
+│  │          AUTO-APPLY  [Phase 7 — Complete]                       │     │
+│  │  Claude Haiku agent drives Playwright browser via a11y          │     │
+│  │  snapshots — survives UI changes, handles conditional forms     │     │
+│  │  Scoped to Indeed Easy Apply only (Cloudflare blocks others)    │     │
+│  │  Cloudflare detected → job stays queued_apply (manual queue)   │     │
+│  └──────┬──────────────────────────────────────────────────────────┘     │
 │         │                                                                │
 │  ┌──────▼──────────────────────────────────────────────────────────┐     │
-│  │               FEEDBACK LOOP LAYER                          │     │
-│  │  Gmail MCP ── polls inbox for recruiter replies                  │     │
-│  │  Detects reply → auto-updates job status in Postgres            │     │
-│  │  "Recruiter replied" → status: phone_screen                     │     │
+│  │               FEEDBACK LOOP LAYER  [Phase 8]                    │     │
+│  │  Gmail API ── polls inbox every pipeline run                    │     │
+│  │  LLM classifies: confirmation/assessment/recruiter_reply/       │     │
+│  │  rejection/unimportant                                          │     │
+│  │  Marks confirmations/noise as read · alerts on action items     │     │
+│  │  Matches to DB by company+title → updates status in Postgres    │     │
 │  └──────┬──────────────────────────────────────────────────────────┘     │
 │         │                                                                │
 │  ┌──────▼──────────────────────────────────────────────────────────┐     │
@@ -92,8 +93,8 @@
 | `brave-search` | `@modelcontextprotocol/server-brave-search` | Company intelligence research | Brave API key |
 | `memory` | `@modelcontextprotocol/server-memory` | Persist past application/rejection memory | None |
 | `fetch` | `@modelcontextprotocol/server-fetch` | Scrape company career pages | None |
-| `linkedin` | `stickerdaniel/linkedin-mcp-server` | Recruiter tracing (Premium account) | LinkedIn login |
-| `gmail` | `@gongrzhe/server-gmail-autoauth-mcp` | Detect recruiter email replies | Google OAuth |
+| `linkedin` | ~~`stickerdaniel/linkedin-mcp-server`~~ | **Dropped** — bot detection risk, unreliable recruiter targeting | — |
+| `gmail` | ~~`@gongrzhe/server-gmail-autoauth-mcp`~~ | **Replaced by Gmail API directly** — same OAuth creds, no MCP server needed | Google OAuth |
 | `google-calendar` | `@cocal/google-calendar-mcp` | Auto-create interview prep events | Google OAuth |
 | `notion` | `@notionhq/notion-mcp-server` | Mirror pipeline to Notion Kanban board | Notion API key |
 
@@ -163,15 +164,19 @@ Claude reads the page fresh each step — durable across UI changes.
 
 Jobs on Workday/Greenhouse/Oracle stay as `queued_apply` — Cloudflare blocks headless
 browsers on those portals. Surfaced in dashboard Manual Apply Queue for one-click apply.
-Logs success/failure per job; marks `apply_failed` in DB on error with Telegram alert.
-
-### `src/recruiter/tracer.py` *(Phase 8)*
-LinkedIn MCP (Premium) finds hiring managers / tech recruiters at target company.
-Claude Sonnet drafts a personalized outreach message from the JD. Queues for human approval.
+Cloudflare Turnstile detected by page title — returns `skipped` so job stays `queued_apply`
+for manual apply rather than `apply_failed`. Telegram alert only fires on genuine errors.
 
 ### `src/feedback/gmail_monitor.py` *(Phase 8)*
-Gmail MCP polls inbox every run for recruiter replies. Matches sender domain to
-known applied companies. On match → updates job status to `phone_screen`, sends Telegram alert.
+Gmail API (google-api-python-client) polls inbox every pipeline run. LinkedIn recruiter
+tracing was dropped — unreliable recruiter targeting and LinkedIn account ban risk outweigh
+the benefit (see Phase 8 decision note in implementation-phases.md).
+
+Classifies each unread email via Claude Haiku into: `confirmation` | `unimportant` |
+`rejection` | `assessment` | `recruiter_reply`. Marks confirmation/unimportant as read.
+Sends Telegram alert for assessment and recruiter_reply. Matches extracted company + job
+title against jobs table — updates DB on single match, alerts with all candidates on
+ambiguous match (multiple JPMorgan applications), still alerts on zero match (manual apply).
 
 ### `src/calendar/interview_scheduler.py` *(Phase 10)*
 Google Calendar MCP creates a prep event 24h before confirmed interviews.
@@ -277,7 +282,7 @@ fetch_jobs()                         ← jobspy (Indeed/Google Jobs)
                              └─► disqualified  → DB
 
 [parallel, every run]
-gmail_monitor()                      ← Gmail MCP
+gmail_monitor()                      ← Gmail API (google-api-python-client)
     └─► match reply to applied job
          └─► update status → phone_screen → Telegram alert
 
@@ -302,8 +307,8 @@ notion_sync()                        ← Notion MCP
 | Brave Search MCP | Company intelligence | MCP | Brave API key |
 | Memory MCP | Rejection/application history | MCP | None |
 | Fetch MCP | Career page scraping | MCP | None |
-| LinkedIn MCP | Recruiter tracing | MCP | LinkedIn Premium |
-| Gmail MCP | Recruiter reply detection | MCP | Google OAuth |
+| LinkedIn MCP | ~~Recruiter tracing~~ — **dropped** | — | — |
+| Gmail API | Inbox monitoring, email classification, status updates | google-api-python-client | Google OAuth |
 | Google Calendar MCP | Interview prep automation | MCP | Google OAuth |
 | Notion MCP | Kanban pipeline mirror | MCP | Notion API key |
 | Telegram Bot API | Alerts | httpx | Bot token |
