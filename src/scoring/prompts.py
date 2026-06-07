@@ -6,7 +6,7 @@
 # ---------------------------------------------------------------------------
 _RESUME = """
 CANDIDATE: Rishavsingh Kshatriya
-Senior Java Engineer | 6+ years
+Senior Java Engineer | ~8 years total experience
 
 SUMMARY
 Distributed systems engineer. 50,000+ daily transactions, 200K+ users across
@@ -67,11 +67,12 @@ CERTIFICATIONS
 Microsoft Certified: Azure Fundamentals (AZ-900) — April 2023
 
 TARGET
-- Roles: Senior Software Engineer, Senior Java Developer, Backend Engineer
-- Seniority: roles requiring 3–7 years experience
+- Roles: Senior Software Engineer, Senior Java Developer, Staff Engineer, Backend Engineer
+- Seniority: roles requiring 5–10 years experience (sweet spot: 5–8 years)
 - Location: Remote / Hybrid / Onsite anywhere in US
 - Salary floor: $100,000/year base
-- Domains of interest (ranked): Financial services > Healthcare > Enterprise SaaS > Other tech
+- Domain experience: Financial services (Ally Financial), Healthcare (Vitech),
+  Enterprise SaaS (Starbucks) — strongest fit in these domains
 """
 
 # ---------------------------------------------------------------------------
@@ -80,30 +81,41 @@ TARGET
 _RUBRIC = """
 SCORING RUBRIC (0–100)
 
-Score by weighing these factors:
+The score answers one question: how likely is it that this candidate gets hired for this role?
+Score fit and realism — not how desirable the job is.
 
-1. CORE TECH MATCH (most important)
+1. CORE TECH MATCH (most important — drives ~50% of score)
    - Java 17/21 + Spring Boot + Microservices: strong base
    - Add: Kafka / event-driven, cloud (AWS/Azure), PostgreSQL — each raises score
-   - Java but heavy frontend/mobile/ML: penalise significantly
+   - Java but heavy frontend/mobile/ML required: penalise significantly
    - No Java as primary language: score ≤ 30
 
-2. SENIORITY FIT
-   - "Senior" or "3–7 years" required: ideal
-   - "Staff" or "7–10 years" required: slight penalty (stretch but possible)
-   - Junior (<2 years) or "10+ years" required: penalise heavily
+2. SENIORITY FIT (critical — drives ~30% of score)
+   The candidate has ~8 years of total experience. Score against the job's stated requirement:
+   - 5–8 years required: ideal fit — no penalty
+   - 3–5 years required: slight penalty (overqualified risk)
+   - 8–10 years required: slight penalty (small stretch)
+   - 10+ years required ("Lead", "Principal", "Architect"): heavy penalty — candidate is
+     likely 2–3 years short; these roles rarely hire below the stated bar
+   - <3 years required (junior): heavy penalty (overqualified)
 
-3. DOMAIN MATCH
-   - Finance / Banking / Fintech / Insurance: strong bonus
-   - Healthcare / Enterprise SaaS: moderate bonus
-   - Pure consumer tech or unrelated: neutral
+3. DOMAIN EXPERIENCE MATCH (moderate — ~20% of score)
+   Only give a bonus if the candidate's ACTUAL WORK EXPERIENCE is relevant to the domain.
+   The candidate has real experience in: financial services, healthcare, enterprise SaaS.
+   - Role is in finance/banking/fintech AND prior finance experience applies: moderate bonus
+   - Role is in healthcare AND prior healthcare experience applies: small bonus
+   - Role is in enterprise SaaS / HR tech: small bonus
+   - Unrelated domain (consumer tech, gaming, social media): slight penalty
+   Do NOT give a domain bonus just because the company is well-known or prestigious.
 
-4. COMPANY TIER (use Tier-1/2/3 info if provided, else treat as unknown)
-   - Tier-1: bonus; Tier-2: small bonus; Tier-3/Unknown: neutral
+4. COMPANY TIER — NEUTRAL (do not adjust score)
+   Company tier reflects prestige and selectivity, not candidate fit.
+   Tier-1 companies have higher hiring bars — they are harder to get into, not easier.
+   Do not add or subtract points based on company tier.
 
-5. COMPENSATION (if stated)
-   - ≥$150K: bonus; $100–149K: neutral; <$100K: penalise (rare after pre-filter)
-   - Not stated: neutral — do NOT penalise for missing salary
+5. COMPENSATION — NEUTRAL (do not adjust score)
+   All jobs reaching the scorer have already passed a $100K salary floor filter.
+   Salary above the floor does not mean better fit. Do not adjust score for compensation.
 
 6. VISA DISQUALIFICATION
    - If the description explicitly says "will not sponsor", "no sponsorship",
@@ -112,11 +124,11 @@ Score by weighing these factors:
    - If no explicit rejection (including if visa is simply not mentioned): visa_disqualified=false
 
 SCORE BANDS
-90–100 : Near-perfect — Java 21/Spring Boot, senior, finance/healthcare, Tier-1, strong comp
-75–89  : Strong match — core Java skills, right seniority, decent domain or company tier
-60–74  : Decent — Java present but partial stack, wrong seniority, or weak domain
-40–59  : Weak — Java secondary, primary focus is frontend/infra/ML, or seniority mismatch
-0–39   : Poor — not primarily Java backend, wrong domain, or visa disqualified
+90–100 : Near-perfect fit — Java 21/Spring Boot/Kafka, exactly 5–8 yrs required, domain matches
+75–89  : Strong fit — core Java stack present, seniority close, role is realistic to land
+60–74  : Partial fit — Java present but seniority off by 2+ years, or stack partially matches
+40–59  : Weak fit — Java secondary, seniority heavily mismatched, or wrong role type
+0–39   : Poor fit — not a Java backend role, major mismatch, or visa disqualified
 """
 
 # ---------------------------------------------------------------------------
@@ -127,30 +139,37 @@ SCORE BANDS
 _CALIBRATION = """
 CALIBRATION EXAMPLES — use these to anchor your scoring scale:
 
-A) score=93, visa_disqualified=false
-   Java 21 + Spring Boot + Kafka + AWS, Senior 5+ yrs, Tier-1 Finance company,
-   $160–210K, visa sponsorship explicitly available.
-   Why 93: near-perfect stack + seniority + domain + tier + comp alignment.
+A) score=92, visa_disqualified=false
+   Java 21 + Spring Boot + Kafka + AWS, "Senior Software Engineer, 5–8 yrs",
+   fintech company, candidate's finance background directly applies.
+   Why 92: near-perfect stack + seniority sweet spot + domain experience matches.
+   Company tier and salary did NOT influence this score.
 
 B) score=80, visa_disqualified=false
-   Java/Spring Boot microservices, Senior, Tier-2 tech company (e.g. Stripe),
-   $140–160K, no specific finance/healthcare domain mentioned.
-   Why 80: strong core match, right seniority, good comp — docked for no domain
-   bonus and Tier-2 vs Tier-1.
+   Java/Spring Boot microservices, "Senior Engineer, 4–7 yrs required",
+   enterprise SaaS company, no specific domain overlap but tech is strong.
+   Why 80: strong core stack, seniority fits, slight dock for no domain match.
 
-C) score=65, visa_disqualified=false
-   Java/Spring Boot, Senior, Tier-3 IT services company, $110–130K,
-   description thin on advanced skills (no Kafka/cloud specifics mentioned).
-   Why 65: Java/Spring Boot present, acceptable seniority and comp — docked for
-   Tier-3, weak domain, and lack of advanced stack signals.
+C) score=72, visa_disqualified=false
+   Java/Spring Boot, "Lead Software Engineer, 10+ years required", Tier-1
+   finance company (e.g. Visa, JPMorgan), $170–270K.
+   Why 72: strong Java/finance stack match, but "Lead / 10+ yrs" requirement is
+   a significant seniority stretch (candidate has ~8 yrs). High salary and Tier-1
+   company did NOT raise this score — those reflect selectivity, not fit.
 
-D) score=52, visa_disqualified=false
+D) score=63, visa_disqualified=false
+   Java/Spring Boot, Senior, description thin on advanced stack (no Kafka/cloud),
+   unrelated domain (e-commerce / consumer tech), 5–8 yrs required.
+   Why 63: Java present and seniority fits, but no domain experience and weak
+   advanced stack signals.
+
+E) score=50, visa_disqualified=false
    Python (Django) primary backend with some legacy Java services, Senior,
-   Unknown company, $120–140K, no domain bonus.
-   Why 52: Java secondary — candidate would be hired as a Python engineer.
-   Seniority and comp are fine but stack fit is poor.
+   5–7 yrs required, no domain overlap.
+   Why 50: Java secondary — candidate would be hired as a Python engineer.
+   Seniority fits but stack fit is poor.
 
-E) score=0, visa_disqualified=true
+F) score=0, visa_disqualified=true
    Node.js/React primary, "must be authorized to work in the US without
    sponsorship now or in the future."
    Why 0: explicit visa rejection overrides everything. Stack also wrong.
