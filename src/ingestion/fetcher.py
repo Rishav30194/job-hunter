@@ -232,7 +232,7 @@ def _normalize(df: pd.DataFrame) -> list[dict]:
     for _, row in df.iterrows():
         salary_min, salary_max, salary_text = _extract_salary(row)
         work_type = _extract_work_type(row)
-        url = _str(row.get("job_url")) or _str(row.get("job_url_direct"))
+        url = _str(row.get("job_url_direct")) or _str(row.get("job_url"))
 
         jobs.append({
             "title": _str(row.get("title")),

@@ -5,14 +5,13 @@ Autonomous 24/7 job search, scoring, and application system for US tech/finance 
 ## Stack
 - Python 3.12, APScheduler, jobspy, Anthropic Claude API
 - PostgreSQL (state), Redis (cache), Docker Compose
-- Streamlit (dashboard), Playwright MCP (auto-apply), Telegram (alerts)
+- Streamlit (dashboard), Telegram (alerts)
 
 ## Setup & Run
 ```bash
 cp .env.example .env                     # fill in all required values
 python3.12 -m venv venv
 venv/bin/pip install -r requirements.txt
-venv/bin/playwright install chromium
 docker compose up -d postgres redis
 venv/bin/alembic upgrade head
 
@@ -85,10 +84,8 @@ Adding a new secret: add to `.env.example` → `config/settings.py` → this tab
 |---------|-------|
 | Fetch interval | 6 hours |
 | Max job age | 48 hours |
-| Score ≥ 85 | Human review queue (capped at 5/run) |
-| Score 75–84 | Auto-apply queue (capped at 20/day) |
+| Score ≥ 75 | Apply queue (capped at 20/day) — one-click manual apply or skip from dashboard |
 | Score < 75 | Archived |
+| Queue expiry | Jobs in apply queue auto-archived after 30 days |
 | Visa filter | Skip only if JD explicitly rejects sponsorship |
 | Hard excluded company | Infosys / Infosys Limited |
-| Auto-apply target | Indeed Easy Apply URLs only (`indeed.com`) |
-| Workday / Greenhouse / Oracle HCM | Never auto-apply — Cloudflare Bot Management blocks headless browsers reliably; routed to dashboard for one-click human apply |

@@ -43,13 +43,13 @@ def send_message(text: str) -> None:
 
 
 def send_high_match_alert(jobs: list[dict]) -> None:
-    """Send one message listing the top human-review jobs, sorted by score descending."""
+    """Send one message listing high-match jobs (≥85) added to the apply queue this run."""
     if not jobs:
         return
 
     top = sorted(jobs, key=lambda j: j.get("score") or 0, reverse=True)[:_MAX_HIGH_MATCH]
     count = len(top)
-    lines = [f"<b>{count} High-Match Job{'s' if count != 1 else ''} — Human Review Queue</b>"]
+    lines = [f"<b>{count} High-Match Job{'s' if count != 1 else ''} — Apply Queue</b>"]
 
     for i, job in enumerate(top, 1):
         title = _e(job.get("title") or "Unknown")
@@ -87,8 +87,7 @@ def send_run_summary(stats: dict) -> None:
             f"  |  Scored: {stats.get('jobs_scored', 0)}"
         ),
         (
-            f"Human Review: {stats.get('human_review', 0)}"
-            f"  |  Auto-Apply: {stats.get('auto_applied', 0)}"
+            f"Apply Queue: {stats.get('queued', 0)}"
             f"  |  Archived: {stats.get('archived', 0)}"
             f"  |  Disqualified: {stats.get('disqualified', 0)}"
         ),

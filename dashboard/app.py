@@ -1,4 +1,4 @@
-"""Streamlit dashboard — metrics, human queue, applied funnel, all jobs, analytics."""
+"""Streamlit dashboard — metrics, apply queue, applied funnel, all jobs, analytics."""
 
 from datetime import datetime
 
@@ -34,23 +34,12 @@ def _query_metrics() -> dict:
     return dict(scanned=scanned, high_match=high_match, applied=applied, interviews=interviews)
 
 
-def _query_human_review() -> list[dict]:
+def _query_apply_queue() -> list[dict]:
+    """All jobs ready for manual apply, sorted by score descending."""
     with get_session() as session:
         rows = session.scalars(
             select(Job)
-            .where(Job.status == "human_review")
-            .order_by(Job.score.desc())
-        ).all()
-        return [_job_to_dict(j) for j in rows]
-
-
-def _query_manual_apply() -> list[dict]:
-    """queued_apply jobs on non-Indeed platforms — need manual one-click apply."""
-    with get_session() as session:
-        rows = session.scalars(
-            select(Job)
-            .where(Job.status == "queued_apply")
-            .where(~Job.url.contains("indeed.com"))
+            .where(Job.status.in_(["queued_apply", "human_review"]))
             .order_by(Job.score.desc())
         ).all()
         return [_job_to_dict(j) for j in rows]
@@ -117,27 +106,27 @@ def _job_to_dict(job: Job) -> dict:
 # DB mutations
 # ---------------------------------------------------------------------------
 
-def _approve_job(job_id: str) -> None:
-    """Move job to queued_apply and create an Application row for tracking.
-
-    Idempotent — safe to call more than once; does not create duplicate Application rows.
-    """
-    with get_session() as session:
-        job = session.get(Job, job_id)
-        if job and job.status != "queued_apply":
-            job.status = "queued_apply"
-            existing = session.scalars(
-                select(Application).where(Application.job_id == job_id)
-            ).first()
-            if not existing:
-                session.add(Application(job_id=job_id, method="manual_approve"))
-
-
 def _skip_job(job_id: str) -> None:
     with get_session() as session:
         job = session.get(Job, job_id)
         if job:
             job.status = "skipped"
+
+
+def _mark_applied(job_id: str) -> None:
+    """Set job status to applied, record applied_at, and create an Application row."""
+    from datetime import timezone as _tz
+    with get_session() as session:
+        job = session.get(Job, job_id)
+        if job and job.status != "applied":
+            job.status = "applied"
+            job.applied_at = datetime.now(_tz.utc)
+            job.apply_method = "manual"
+            existing = session.scalars(
+                select(Application).where(Application.job_id == job_id)
+            ).first()
+            if not existing:
+                session.add(Application(job_id=job_id, method="manual"))
 
 
 # ---------------------------------------------------------------------------
@@ -165,62 +154,48 @@ st.divider()
 # ---------------------------------------------------------------------------
 
 tab_queue, tab_applied, tab_all, tab_analytics = st.tabs(
-    ["Human Queue", "Applied", "All Jobs", "Analytics"]
+    ["Apply Queue", "Applied", "All Jobs", "Analytics"]
 )
 
-# ── Human Queue ──────────────────────────────────────────────────────────────
+# ── Apply Queue ───────────────────────────────────────────────────────────────
 with tab_queue:
-    st.subheader("Review Queue")
-    try:
-        review_jobs = _query_human_review()
-    except Exception as e:
-        st.error(f"Could not load review queue: {e}")
-        review_jobs = []
+    st.subheader("Apply Queue")
+    st.caption("Jobs scored ≥75 — open and apply manually, or skip to dismiss permanently.")
 
-    if not review_jobs:
-        st.info("No jobs awaiting review.")
+    try:
+        apply_jobs = _query_apply_queue()
+    except Exception as e:
+        st.error(f"Could not load apply queue: {e}")
+        apply_jobs = []
+
+    if not apply_jobs:
+        st.info("No jobs in the apply queue.")
     else:
-        for job in review_jobs:
-            with st.expander(f"**{job['title']}** @ {job['company']}  |  Score: {job['score']}"):
+        for job in apply_jobs:
+            posted = ""
+            if job["posted_at"]:
+                posted = f"  |  Posted: {job['posted_at'].strftime('%b %d')}"
+            label = f"**{job['title']}** @ {job['company']}  |  Score: {job['score']}{posted}"
+            with st.expander(label):
                 col_l, col_r = st.columns([3, 1])
                 with col_l:
                     st.write(f"**Location:** {job['location']}  |  **Work type:** {job['work_type']}")
                     st.write(f"**Salary:** {job['salary_text'] or 'Not listed'}")
-                    if job["url"]:
-                        st.markdown(f"[Open posting]({job['url']})")
                     if job["score_reasoning"]:
                         st.caption(job["score_reasoning"])
                 with col_r:
-                    if st.button("Approve", key=f"approve_{job['id']}", type="primary"):
-                        _approve_job(job["id"])
-                        st.success("Moved to apply queue.")
+                    if job["url"]:
+                        st.link_button("Open & Apply", job["url"], type="primary")
+                    else:
+                        st.write("No URL")
+                    if st.button("Mark Applied", key=f"applied_{job['id']}"):
+                        _mark_applied(job["id"])
+                        st.success("Marked as applied.")
                         st.rerun()
                     if st.button("Skip", key=f"skip_{job['id']}"):
                         _skip_job(job["id"])
                         st.warning("Skipped.")
                         st.rerun()
-
-    st.divider()
-    st.subheader("Manual Apply Queue")
-    st.caption("High-scoring jobs on Workday / Greenhouse / Oracle — auto-apply blocked; open and apply manually.")
-
-    try:
-        manual_jobs = _query_manual_apply()
-    except Exception as e:
-        st.error(f"Could not load manual apply queue: {e}")
-        manual_jobs = []
-
-    if not manual_jobs:
-        st.info("No jobs pending manual apply.")
-    else:
-        for job in manual_jobs:
-            col_title, col_score, col_btn = st.columns([4, 1, 1])
-            col_title.write(f"**{job['title']}** @ {job['company']}  |  {job['location']}")
-            col_score.write(f"Score: **{job['score']}**")
-            if job["url"]:
-                col_btn.link_button("Open & Apply", job["url"])
-            else:
-                col_btn.write("No URL")
 
 # ── Applied ───────────────────────────────────────────────────────────────────
 with tab_applied:
@@ -253,7 +228,7 @@ with tab_applied:
         df = pd.DataFrame(applied_jobs)[
             ["title", "company", "location", "score", "status", "applied_at", "url"]
         ]
-        df["applied_at"] = pd.to_datetime(df["applied_at"]).dt.strftime("%Y-%m-%d")
+        df["applied_at"] = pd.to_datetime(df["applied_at"], errors="coerce").dt.strftime("%Y-%m-%d").fillna("—")
         st.dataframe(
             df,
             column_config={"url": st.column_config.LinkColumn("Link", display_text="Open")},
@@ -298,9 +273,10 @@ with tab_all:
         mask &= df_all["score"].fillna(0).between(score_min, score_max)
 
         display_cols = ["title", "company", "location", "score", "status",
-                        "salary_text", "work_type", "source", "fetched_at"]
+                        "salary_text", "work_type", "source", "fetched_at", "url"]
         st.dataframe(
             df_all[mask][display_cols].reset_index(drop=True),
+            column_config={"url": st.column_config.LinkColumn("Link", display_text="Open")},
             use_container_width=True,
             hide_index=True,
         )
@@ -324,9 +300,9 @@ with tab_analytics:
                 color_discrete_sequence=["#4f8bf9"],
             )
             fig_hist.add_vline(x=85, line_dash="dash", line_color="green",
-                               annotation_text="Human review (85)")
+                               annotation_text="High match (85)")
             fig_hist.add_vline(x=75, line_dash="dash", line_color="orange",
-                               annotation_text="Auto-apply (75)")
+                               annotation_text="Apply queue (75)")
             st.plotly_chart(fig_hist, use_container_width=True)
         else:
             st.info("No scored jobs yet.")

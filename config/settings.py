@@ -23,10 +23,6 @@ class Settings(BaseSettings):
 
     rapidapi_key: str = ""         # JSearch (Google for Jobs) — Phase 9; skipped if empty
 
-    indeed_email: str = ""
-    indeed_password: str = ""
-    resume_path: str = ""          # absolute local path to PDF resume for upload
-
     google_client_id: str = ""
     google_client_secret: str = ""
     google_refresh_token: str = ""
@@ -34,18 +30,15 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     # Tunable pipeline behaviour                                           #
     # ------------------------------------------------------------------ #
-    human_review_threshold: int = 85
-    auto_apply_threshold: int = 75
-    max_auto_applies_per_day: int = 20
-    max_human_review_per_run: int = 5
+    high_match_threshold: int = 85   # score at which Telegram alert fires
+    auto_apply_threshold: int = 75   # minimum score to enter apply queue
+    max_queued_per_day: int = 20     # daily cap on new queued_apply jobs
 
     fetch_interval_hours: float = 6
     job_max_age_hours: int = 48
     zero_result_alert_threshold: int = 3
 
     min_salary: int = 100_000
-
-    playwright_headless: bool = True
 
 
 settings = Settings()

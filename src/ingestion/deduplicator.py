@@ -19,7 +19,7 @@ def compute_hash(company: str, title: str, location: str | None) -> str:
     role at the same company in the same location are treated as identical
     regardless of which platform or run they came from.
     """
-    raw = f"{company.strip().lower()}|{title.strip().lower()}|{(location or '').strip().lower()}"
+    raw = f"{(company or '').strip().lower()}|{(title or '').strip().lower()}|{(location or '').strip().lower()}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -33,7 +33,7 @@ def _get_rejected_companies(session: Session) -> set[str]:
         .where(Application.applied_at > cutoff)
         .distinct()
     ).all()
-    return {c.lower() for c in rows}
+    return {c.lower() for c in rows if c}
 
 
 def filter_new(jobs: list[dict], session: Session) -> list[dict]:
@@ -50,7 +50,7 @@ def filter_new(jobs: list[dict], session: Session) -> list[dict]:
     rejected = _get_rejected_companies(session)
     if rejected:
         before = len(jobs)
-        jobs = [j for j in jobs if j["company"].strip().lower() not in rejected]
+        jobs = [j for j in jobs if (j.get("company") or "").strip().lower() not in rejected]
         logger.info("Cooldown: %d jobs filtered (rejected within 90 days)", before - len(jobs))
 
     # Compute hashes and deduplicate within the batch
