@@ -417,8 +417,8 @@ Indeed often misses.
 **New secret required:** `RAPIDAPI_KEY` — get from rapidapi.com → JSearch → Subscribe (free tier).
 
 ### Tasks
-- [ ] Get RapidAPI key and subscribe to JSearch (free tier)
-- [ ] Add `RAPIDAPI_KEY` to `.env`
+- [x] Get RapidAPI key and subscribe to JSearch (free tier)
+- [x] Add `RAPIDAPI_KEY` to `.env`
 - [x] `src/ingestion/fetcher.py` — add `_fetch_jsearch()` alongside existing jobspy fetch
   - [x] 1 call per run: `query="Senior Java Backend Engineer United States"`, `num_pages=1`, `date_posted=3days`, `country=us`
   - [x] Normalize JSearch response fields to internal job dict format (`_normalize_jsearch`, `_annualise_jsearch_salary`)
@@ -490,9 +490,9 @@ print('Calendar event ID:', event_id)
 rejections from the Gmail feedback loop. A single query at dedup time is sufficient.
 
 ### Tasks
-- [ ] `src/ingestion/deduplicator.py` — add rejection cooldown check
-  - [ ] Query: `SELECT DISTINCT company FROM applications WHERE status='rejected' AND applied_at > NOW() - INTERVAL '90 days'`
-  - [ ] Skip any job whose company is in the cooldown set before passing to scorer
+- [x] `src/ingestion/deduplicator.py` — add rejection cooldown check
+  - [x] Query: `SELECT DISTINCT company FROM applications WHERE status='rejected' AND applied_at > NOW() - INTERVAL '90 days'`
+  - [x] Skip any job whose company is in the cooldown set before passing to scorer
 
 ### Testing
 ```bash
@@ -548,7 +548,7 @@ curl http://localhost:8501                 # dashboard responds 200
 | 6 | Dashboard | ✅ Complete |
 | 7 | Auto-Apply (Playwright MCP) | ✅ Complete |
 | 8 | Gmail Feedback Loop (LinkedIn tracer dropped) | ✅ Complete |
-| 9 | JSearch Integration (Google for Jobs via RapidAPI) | ⬜ Not Started |
+| 9 | JSearch Integration (Google for Jobs via RapidAPI) | ✅ Complete |
 | 10 | Interview Calendar (Google Calendar API) | ⬜ Not Started |
-| 11 | Rejection Cooldown (DB-based) | ⬜ Not Started |
+| 11 | Rejection Cooldown (DB-based) | ✅ Complete |
 | 12 | VPS Deployment | ⬜ Not Started |

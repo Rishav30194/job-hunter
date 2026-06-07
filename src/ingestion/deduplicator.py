@@ -2,11 +2,12 @@
 
 import hashlib
 import logging
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.db.models import Job
+from src.db.models import Application, Job
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,19 @@ def compute_hash(company: str, title: str, location: str | None) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def _get_rejected_companies(session: Session) -> set[str]:
+    """Return lowercase company names rejected within the last 90 days."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    rows = session.scalars(
+        select(Job.company)
+        .join(Application, Application.job_id == Job.id)
+        .where(Application.status == "rejected")
+        .where(Application.applied_at > cutoff)
+        .distinct()
+    ).all()
+    return {c.lower() for c in rows}
+
+
 def filter_new(jobs: list[dict], session: Session) -> list[dict]:
     """Return only jobs whose content_hash does not already exist in the DB.
 
@@ -31,6 +45,13 @@ def filter_new(jobs: list[dict], session: Session) -> list[dict]:
     """
     if not jobs:
         return []
+
+    # Rejection cooldown — skip companies rejected within the last 90 days
+    rejected = _get_rejected_companies(session)
+    if rejected:
+        before = len(jobs)
+        jobs = [j for j in jobs if j["company"].strip().lower() not in rejected]
+        logger.info("Cooldown: %d jobs filtered (rejected within 90 days)", before - len(jobs))
 
     # Compute hashes and deduplicate within the batch
     seen: dict[str, dict] = {}
