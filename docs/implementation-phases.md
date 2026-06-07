@@ -419,11 +419,12 @@ Indeed often misses.
 ### Tasks
 - [ ] Get RapidAPI key and subscribe to JSearch (free tier)
 - [ ] Add `RAPIDAPI_KEY` to `.env`
-- [ ] `src/ingestion/fetcher.py` — add `_fetch_jsearch()` alongside existing jobspy fetch
-  - [ ] 1 call per run: `query="Senior Java Engineer"`, `num_pages=1`, `date_posted=3days`, `country=us`
-  - [ ] Normalize JSearch response fields to internal job dict format
-  - [ ] Merge deduped JSearch results into `all_jobs` before returning
-- [ ] Log source as `"jsearch"` in job dict so DB tracks origin
+- [x] `src/ingestion/fetcher.py` — add `_fetch_jsearch()` alongside existing jobspy fetch
+  - [x] 1 call per run: `query="Senior Java Backend Engineer United States"`, `num_pages=1`, `date_posted=3days`, `country=us`
+  - [x] Normalize JSearch response fields to internal job dict format (`_normalize_jsearch`, `_annualise_jsearch_salary`)
+  - [x] Merge deduped JSearch results into `all_jobs` before returning
+  - [x] Skip silently if `RAPIDAPI_KEY` not set
+- [x] Log source as `"jsearch"` in job dict so DB tracks origin
 
 ### Field mapping (JSearch → internal dict)
 | JSearch field | Internal field |

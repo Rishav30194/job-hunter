@@ -1,8 +1,9 @@
-"""Fetches job listings via jobspy and applies hard pre-filters before deduplication."""
+"""Fetches job listings via jobspy (Indeed) and JSearch (Google for Jobs) and applies hard pre-filters."""
 
 import logging
 from datetime import date, datetime, timedelta, timezone
 
+import httpx
 import pandas as pd
 from jobspy import scrape_jobs
 
@@ -88,8 +89,123 @@ def fetch_jobs() -> list[dict]:
         except Exception:
             logger.exception("Failed scraping term '%s'", term)
 
-    logger.info("Total fetched: %d jobs across %d search terms", len(all_jobs), len(SEARCH_TERMS))
+    logger.info("Indeed: %d jobs across %d search terms", len(all_jobs), len(SEARCH_TERMS))
+
+    # JSearch — exactly 1 call per run to stay within 200 req/month free tier
+    jsearch_jobs = _apply_filters(_fetch_jsearch())
+    fresh_jsearch = [j for j in jsearch_jobs if j["url"] not in seen_urls]
+    seen_urls.update(j["url"] for j in fresh_jsearch if j["url"])
+    all_jobs.extend(fresh_jsearch)
+    logger.info("JSearch: %d raw → %d after filters", len(jsearch_jobs), len(fresh_jsearch))
+
+    logger.info("Total fetched: %d jobs", len(all_jobs))
     return all_jobs
+
+
+def _fetch_jsearch() -> list[dict]:
+    """Fetch up to 10 jobs from the Google for Jobs index via JSearch (RapidAPI).
+
+    Makes exactly 1 API call per run to stay within the 200 req/month free tier.
+    Returns an empty list if RAPIDAPI_KEY is not configured or the request fails.
+    """
+    if not settings.rapidapi_key:
+        logger.debug("JSearch skipped — RAPIDAPI_KEY not set")
+        return []
+
+    try:
+        response = httpx.get(
+            "https://jsearch.p.rapidapi.com/search",
+            headers={
+                "X-RapidAPI-Key": settings.rapidapi_key,
+                "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
+            },
+            params={
+                "query": "Senior Java Backend Engineer United States",
+                "num_pages": "1",
+                "date_posted": "3days",
+                "country": "us",
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        items = response.json().get("data", [])
+    except Exception:
+        logger.exception("JSearch fetch failed")
+        return []
+
+    jobs = [_normalize_jsearch(item) for item in items]
+    logger.info("JSearch: fetched %d raw jobs", len(jobs))
+    return jobs
+
+
+def _normalize_jsearch(item: dict) -> dict:
+    """Normalize a JSearch API item to the internal job dict format."""
+    city = item.get("job_city") or ""
+    state = item.get("job_state") or ""
+    location = ", ".join(p for p in [city, state] if p) or None
+
+    if item.get("job_is_remote"):
+        work_type = "remote"
+    else:
+        emp = (item.get("job_employment_type") or "").upper()
+        work_type = {"FULLTIME": "fulltime", "PARTTIME": "part_time", "CONTRACTOR": "contractor"}.get(emp)
+
+    sal_min, sal_max, salary_text = _annualise_jsearch_salary(
+        item.get("job_min_salary"),
+        item.get("job_max_salary"),
+        item.get("job_salary_period"),
+    )
+
+    posted_at: datetime | None = None
+    raw_dt = item.get("job_posted_at_datetime_utc")
+    if raw_dt:
+        try:
+            posted_at = datetime.fromisoformat(raw_dt.replace("Z", "+00:00")).replace(tzinfo=None)
+        except Exception:
+            pass
+
+    return {
+        "title": item.get("job_title") or None,
+        "company": item.get("employer_name") or None,
+        "location": location,
+        "work_type": work_type,
+        "salary_min": sal_min,
+        "salary_max": sal_max,
+        "salary_text": salary_text,
+        "description": item.get("job_description") or None,
+        "url": item.get("job_apply_link") or item.get("job_google_link") or None,
+        "source": "jsearch",
+        "posted_at": posted_at,
+    }
+
+
+def _annualise_jsearch_salary(
+    sal_min_raw, sal_max_raw, period: str | None
+) -> tuple[int | None, int | None, str | None]:
+    """Convert JSearch salary fields to annual USD integers.
+
+    JSearch period values: YEAR (use as-is), MONTH (×12), HOUR (×2080).
+    Returns (None, None, None) when salary data is absent.
+    """
+    multiplier = {"MONTH": 12, "HOUR": 2080}.get((period or "").upper(), 1)
+
+    def _to_int(v) -> int | None:
+        if v is None or v != v:  # NaN guard
+            return None
+        return int(float(v) * multiplier)
+
+    sal_min = _to_int(sal_min_raw)
+    sal_max = _to_int(sal_max_raw)
+
+    if not sal_min and not sal_max:
+        return None, None, None
+
+    parts = []
+    if sal_min:
+        parts.append(f"${sal_min:,}")
+    if sal_max:
+        parts.append(f"${sal_max:,}")
+    return sal_min, sal_max, f"{' - '.join(parts)}/year (USD)"
 
 
 def _scrape(search_term: str) -> pd.DataFrame:
