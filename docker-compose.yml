@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: jobhunter
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -19,7 +19,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     restart: unless-stopped
 
   scheduler:
@@ -40,7 +40,7 @@ services:
     command: streamlit run dashboard/app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
     env_file: .env
     ports:
-      - "8501:8501"
+      - "127.0.0.1:8501:8501"
     depends_on:
       postgres:
         condition: service_healthy
