@@ -502,7 +502,7 @@ print('Cooldown check works if recently-rejected company is filtered out')
 - [x] Basic auth (`htpasswd`) protecting the dashboard
 - [x] Open ports 80 + 443 in Hetzner Cloud firewall and ufw
 - [ ] Verify Telegram alerts fire on first pipeline run
-- [ ] Set up log rotation: `docker compose logs` to file with weekly rotation
+- [x] Log rotation: `json-file` driver, 10 MB max per file, 3–5 files per service
 
 ### Testing
 ```bash
