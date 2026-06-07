@@ -488,13 +488,19 @@ print('Cooldown check works if recently-rejected company is filtered out')
 ## Phase 12 — VPS Deployment
 > Deploy the full stack to a cloud VPS and run 24/7.
 
+**VPS:** Hetzner CPX11 (2 vCPU, 2 GB RAM, 40 GB SSD, Ubuntu 24.04) — shared with swing-trader.
+**Public URL:** https://jobhunter.mooo.com (FreeDNS subdomain → 5.78.207.143)
+
 ### Tasks
-- [ ] Provision VPS (Hetzner CX21, Ubuntu 22.04 — ~$5/mo)
-- [ ] Install Docker + Docker Compose + Node.js (for MCP servers)
-- [ ] Clone repo, fill `.env` with all production values
-- [ ] `docker compose up -d` — all services
-- [ ] Verify dashboard at `http://<vps-ip>:8501`
-- [ ] Set up Nginx reverse proxy + SSL (Certbot) for public dashboard access
+- [x] Provision VPS — reused existing Hetzner CPX11 (shared with swing-trader)
+- [x] Install Docker + Docker Compose on VPS
+- [x] Clone repo to `/opt/job-hunter`, fill `.env` with all production values
+- [x] `docker compose up -d --build` — all 4 services running (postgres, redis, scheduler, dashboard)
+- [x] `alembic stamp head` — DB schema marked at current migration (tables already created by init_db on first boot)
+- [x] Set up Nginx reverse proxy with WebSocket support for Streamlit
+- [x] SSL certificate via Certbot (Let's Encrypt) for `jobhunter.mooo.com` — auto-renews
+- [x] Basic auth (`htpasswd`) protecting the dashboard
+- [x] Open ports 80 + 443 in Hetzner Cloud firewall and ufw
 - [ ] Verify Telegram alerts fire on first pipeline run
 - [ ] Set up log rotation: `docker compose logs` to file with weekly rotation
 
@@ -506,9 +512,8 @@ docker compose logs scheduler | tail -50   # pipeline ran, no errors
 curl http://localhost:8501                 # dashboard responds 200
 
 # From local browser
-# Open http://<vps-ip>:8501 → dashboard loads with real data
-# Check Telegram — run summary received
-# Check Gmail — reply detection fires on test email
+# Open https://jobhunter.mooo.com → login (rishav / <password>) → dashboard loads
+# Check Telegram — run summary received after next 6h cycle
 ```
 
 ---
@@ -528,4 +533,4 @@ curl http://localhost:8501                 # dashboard responds 200
 | 9 | JSearch Integration (Google for Jobs via RapidAPI) | ✅ Complete |
 | 10 | Interview Calendar (Google Calendar API) | 🚫 Dropped |
 | 11 | Rejection Cooldown (DB-based) | ✅ Complete |
-| 12 | VPS Deployment | ⬜ Not Started |
+| 12 | VPS Deployment (jobhunter.mooo.com) | 🔄 In Progress |
