@@ -46,13 +46,7 @@ class Job(Base):
     status: Mapped[str] = mapped_column(String(50), default="new", index=True)
     visa_disqualified: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # Recruiter / outreach fields — columns retained in schema; LinkedIn outreach was dropped.
-    # recruiter_name is populated by future calendar/interview tracking.
-    # recruiter_linkedin_url, outreach_message, outreach_sent_at are currently unused.
     recruiter_name: Mapped[str | None] = mapped_column(String(255))
-    recruiter_linkedin_url: Mapped[str | None] = mapped_column(Text)
-    outreach_message: Mapped[str | None] = mapped_column(Text)
-    outreach_sent_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Application tracking
     applied_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -71,8 +65,6 @@ class Application(Base):
     method: Mapped[str] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(50), default="submitted")
 
-    interview_date: Mapped[datetime | None] = mapped_column(DateTime)
-    calendar_event_id: Mapped[str | None] = mapped_column(String(255))
     offer_amount: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

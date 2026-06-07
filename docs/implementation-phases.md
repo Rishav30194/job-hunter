@@ -455,31 +455,8 @@ print('Jobs by source:', sources)
 ---
 
 ## Phase 10 — Interview Calendar Automation
-> Auto-create Google Calendar prep events when an interview is confirmed.
-
-### Tasks
-- [ ] Set up Google OAuth (Client ID + Secret + Refresh Token in `.env`)
-- [ ] `src/calendar/interview_scheduler.py`
-  - [ ] Google Calendar MCP: `create_event` with title, date, description
-  - [ ] Event body: JD summary + company research notes + recruiter name
-  - [ ] Reminder: 24h before interview
-  - [ ] Store `calendar_event_id` in applications table
-- [ ] Trigger from dashboard: when user sets status → `interview`
-
-### Testing
-```bash
-python -c "
-from src.calendar.interview_scheduler import create_prep_event
-event_id = create_prep_event({
-    'title': 'Senior Software Engineer',
-    'company': 'Goldman Sachs',
-    'interview_date': '2026-06-15T10:00:00',
-    'recruiter_name': 'Jane Smith',
-})
-print('Calendar event ID:', event_id)
-"
-# Open Google Calendar — verify event appears with correct details
-```
+> ~~Dropped~~ — low ROI. Interviews are rare; creating a calendar event manually takes 30 seconds.
+> Company research notes don't exist in the system. Phase 12 (VPS) delivers far more value.
 
 ---
 
@@ -549,6 +526,6 @@ curl http://localhost:8501                 # dashboard responds 200
 | 7 | Auto-Apply (Playwright MCP) | ✅ Complete |
 | 8 | Gmail Feedback Loop (LinkedIn tracer dropped) | ✅ Complete |
 | 9 | JSearch Integration (Google for Jobs via RapidAPI) | ✅ Complete |
-| 10 | Interview Calendar (Google Calendar API) | ⬜ Not Started |
+| 10 | Interview Calendar (Google Calendar API) | 🚫 Dropped |
 | 11 | Rejection Cooldown (DB-based) | ✅ Complete |
 | 12 | VPS Deployment | ⬜ Not Started |
