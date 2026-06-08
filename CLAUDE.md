@@ -29,11 +29,11 @@ PYTHONPATH=. venv/bin/streamlit run dashboard/app.py  # dashboard on :8501
 Follow this exact sequence before touching any code:
 
 1. Read `CLAUDE.md` (this file) — constraints and rules first.
-2. Read `docs/implementation-phases.md` — find the first unchecked task.
-3. Read `docs/ARCHITECTURE.md` — understand how the task fits the system.
-4. Run `git log --oneline -10` — verify actual progress matches the docs.
+2. Read `docs/ARCHITECTURE.md` — understand the system.
+3. Read `docs/implementation-phases.md` — all phases complete; check for any open bugs or improvements.
+4. Run `git log --oneline -10` — understand recent changes.
 5. Run `ls src/ dashboard/ data/ config/` — confirm which files physically exist.
-6. State the current phase, last completed task, and next task — then wait for user confirmation before writing any code.
+6. State what you understand about the task and wait for user confirmation before writing any code.
 
 ---
 
@@ -70,7 +70,6 @@ Missing required keys must fail loudly on startup — no silent fallbacks.
 |----------|---------|
 | API keys | `ANTHROPIC_API_KEY`, `RAPIDAPI_KEY` |
 | Tokens | `TELEGRAM_BOT_TOKEN` |
-| Credentials | `INDEED_EMAIL`, `INDEED_PASSWORD` |
 | OAuth | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` |
 | DB | `DATABASE_URL`, `POSTGRES_PASSWORD`, `REDIS_URL` |
 | Personal | `TELEGRAM_CHAT_ID`, any email or phone number |
