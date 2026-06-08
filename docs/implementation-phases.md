@@ -501,7 +501,7 @@ print('Cooldown check works if recently-rejected company is filtered out')
 - [x] SSL certificate via Certbot (Let's Encrypt) for `jobhunter.mooo.com` — auto-renews
 - [x] Basic auth (`htpasswd`) protecting the dashboard
 - [x] Open ports 80 + 443 in Hetzner Cloud firewall and ufw
-- [ ] Verify Telegram alerts fire on first pipeline run
+- [x] Verify Telegram alerts fire on first pipeline run
 - [x] Log rotation: `json-file` driver, 10 MB max per file, 3–5 files per service
 
 ### Testing
@@ -533,4 +533,4 @@ curl http://localhost:8501                 # dashboard responds 200
 | 9 | JSearch Integration (Google for Jobs via RapidAPI) | ✅ Complete |
 | 10 | Interview Calendar (Google Calendar API) | 🚫 Dropped |
 | 11 | Rejection Cooldown (DB-based) | ✅ Complete |
-| 12 | VPS Deployment (jobhunter.mooo.com) | 🔄 In Progress |
+| 12 | VPS Deployment (jobhunter.mooo.com) | ✅ Complete |

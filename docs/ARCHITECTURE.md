@@ -4,106 +4,69 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                           VPS (Hetzner / AWS)                            │
+│              Hetzner CPX11 VPS — 5.78.207.143 (Ubuntu 24.04)             │
+│              Public: https://jobhunter.mooo.com (Nginx + SSL)            │
 │                                                                          │
 │  ┌───────────────────────────────────────────────────────────────────┐   │
-│  │                    APScheduler (every 6h)                         │   │
+│  │           APScheduler — pipeline every 6h, digest daily 09:00    │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                       INGESTION LAYER                              │   │
-│  │  jobspy ──► Indeed (5 search terms, up to 125 listings/run)        │   │
+│  │  jobspy ──► Indeed (8 search terms, up to 200 listings/run)        │   │
 │  │  JSearch ──► Google for Jobs (1 call/run, ~10 listings, free tier) │   │
-│  │  Hard filters: age ≤ 48h · salary ≥ $100K · no visa rejection     │   │
+│  │  Hard filters: age ≤ 48h · salary ≥ $100K · intern/junior titles  │   │
+│  │  Visa-rejected jobs: tagged visa_disqualified=True, not dropped    │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                    DEDUPLICATION LAYER                             │   │
-│  │  SHA-256 hash(company + title + location) vs Postgres             │   │
+│  │  SHA-256 hash(company + title + normalised_location) vs Postgres  │   │
 │  │  Rejection cooldown: skip companies rejected within 90 days       │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                    LLM SCORING ENGINE                              │   │
 │  │  Claude Haiku — scores each job 0–100                             │   │
-│  │  Rubric: Java/Spring match · level · domain · compensation        │   │
-│  │  Returns: score · reasoning · disqualified flag                   │   │
+│  │  Pre-disqualified (visa) jobs skip API call — score=0 directly    │   │
+│  │  Rubric: tech stack · seniority fit · domain experience           │   │
+│  │  Company tier and salary do NOT affect score                      │   │
+│  │  Returns: score · reasoning · visa_disqualified flag              │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                      DECISION ROUTER                               │   │
-│  │  score ≥ 85  ──► Human Review Queue (cap: 5/run; overflow → apply) │   │
-│  │  score 75–84 ──► Auto-Apply Queue (cap: 20/day; overflow → arch.) │   │
+│  │  score ≥ 75  ──► Apply Queue (cap: 20/day; overflow → archived)   │   │
 │  │  score < 75  ──► Archived                                         │   │
-│  │  disqualified ──► Discarded                                       │   │
-│  └──────┬──────────────────────────┬─────────────────────────────────┘   │
-│         │                          │                                      │
-│  ┌──────▼──────────────────────────────────────────────────────────┐     │
-│  │          AUTO-APPLY  [Phase 7 — Complete]                       │     │
-│  │  Claude Haiku agent drives Playwright browser via a11y          │     │
-│  │  snapshots — survives UI changes, handles conditional forms     │     │
-│  │  Scoped to Indeed Easy Apply only (Cloudflare blocks others)    │     │
-│  │  Cloudflare detected → job stays queued_apply (manual queue)   │     │
-│  └──────┬──────────────────────────────────────────────────────────┘     │
-│         │                                                                │
-│  ┌──────▼──────────────────────────────────────────────────────────┐     │
-│  │               FEEDBACK LOOP LAYER  [Phase 8]                    │     │
-│  │  Gmail API ── polls inbox every pipeline run                    │     │
-│  │  LLM classifies: confirmation/assessment/recruiter_reply/       │     │
-│  │  rejection/unimportant                                          │     │
-│  │  Marks confirmations/noise as read · alerts on action items     │     │
-│  │  Matches to DB by company+title → updates status in Postgres    │     │
-│  └──────┬──────────────────────────────────────────────────────────┘     │
-│         │                                                                │
-│  ┌──────▼──────────────────────────────────────────────────────────┐     │
-│  │         INTERVIEW AUTOMATION LAYER  [Phase 10]                 │     │
-│  │  Google Calendar API ── on interview confirm:                   │     │
-│  │  Creates prep event 24h before + adds JD summary to event body  │     │
-│  └──────┬──────────────────────────────────────────────────────────┘     │
-│         │                                                                │
-│  ┌──────▼──────────────────────────────────────────────────────────┐     │
-│  │                    PERSISTENCE LAYER                             │     │
-│  │  PostgreSQL: jobs · applications · outreach tables              │     │
-│  │  Redis: rate-limit counters · dedup cache                       │     │
-│  └──────┬──────────────────────────────────────────────────────────┘     │
-│         │                                                                │
-│  ┌──────▼──────────────────────────────┐  ┌──────────────────────────┐   │
-│  │  STREAMLIT DASHBOARD                │  │   TELEGRAM ALERTS        │   │
-│  │  :8501                              │  │   High-match             │   │
-│  │  Metrics · Queue · Applied ·        │  │   Run summary            │   │
-│  │  Analytics                          │  │                          │   │
-│  └─────────────────────────────────────┘  └──────────────────────────┘   │
+│  │  visa_disqualified ──► Disqualified (persisted, deduped next run) │   │
+│  └────────────────────────────┬──────────────────────────────────────┘   │
+│                               │                                          │
+│  ┌────────────────────────────▼──────────────────────────────────────┐   │
+│  │               FEEDBACK LOOP LAYER                                  │   │
+│  │  Gmail API — polls inbox every pipeline run                       │   │
+│  │  LLM classifies: confirmation / assessment / recruiter_reply /    │   │
+│  │  rejection / unimportant                                          │   │
+│  │  assessment + recruiter_reply → advances job to phone_screen      │   │
+│  │  rejection → advances job to rejected (feeds cooldown)            │   │
+│  │  Marks read · stars action items · sends Telegram alert           │   │
+│  └────────────────────────────┬──────────────────────────────────────┘   │
+│                               │                                          │
+│  ┌────────────────────────────▼──────────────────────────────────────┐   │
+│  │                    PERSISTENCE LAYER                               │   │
+│  │  PostgreSQL: jobs · applications · pipeline_runs                  │   │
+│  │  Redis: available (rate counters / cache — not actively used)     │   │
+│  └──────┬─────────────────────────────────┬──────────────────────────┘   │
+│         │                                 │                              │
+│  ┌──────▼──────────────────────────┐  ┌───▼──────────────────────────┐   │
+│  │  STREAMLIT DASHBOARD            │  │   TELEGRAM ALERTS            │   │
+│  │  https://jobhunter.mooo.com     │  │   High-match jobs (≥85)      │   │
+│  │  Basic auth (htpasswd)          │  │   Run summary                │   │
+│  │  Metrics · Apply Queue ·        │  │   Daily queue digest (09:00) │   │
+│  │  Applied · All Jobs ·           │  │   Rejection / assessment /   │   │
+│  │  Analytics · Pipeline History  │  │   recruiter reply alerts      │   │
+│  └─────────────────────────────────┘  └──────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
-
----
-
-## MCP Server Registry
-
-| MCP | Package | Purpose | Auth Required |
-|-----|---------|---------|---------------|
-| `playwright` | `@playwright/mcp` (Microsoft) | Indeed Easy Apply automation only — see scope note below | None |
-| `google-calendar` | `@cocal/google-calendar-mcp` | Auto-create interview prep events (Phase 10) | Google OAuth |
-
-All servers are configured in `.mcp.json` at project root. Env vars are loaded from `.env`.
-
-### Auto-Apply Scope — Why Indeed Easy Apply Only
-
-Standard `@playwright/mcp` is intentionally scoped to **Indeed Easy Apply** listings only.
-
-**Workday, Greenhouse, Lever, Taleo, Oracle HCM** — which cover the majority of Tier-1
-targets (JPMorgan, Goldman, Microsoft, etc.) — all sit behind Cloudflare Bot Management.
-Standard Playwright is fingerprinted and blocked at the TLS/JS layer before it can fill
-any form. Patchright (a stealth Playwright fork, 200K+ weekly downloads) bypasses
-*fingerprinting* checks but cannot reliably defeat Cloudflare's *behavioral* analysis
-(mouse-movement entropy, scroll timing, interaction rhythm) on high-security configurations.
-The anti-bot landscape is also an ongoing arms race — any workaround that works today may
-stop working within weeks.
-
-**Decision:** auto-apply only where confidence is high (Indeed Easy Apply). All other
-jobs — Workday portals, company career sites — remain at `queued_apply` and surface in
-the dashboard's Manual Apply Queue with a direct URL for one-click manual apply.
-This is reliable and sustainable; trying to automate Workday at Tier-1 banks is not.
 
 ---
 
@@ -111,81 +74,52 @@ This is reliable and sustainable; trying to automate Workday at Tier-1 banks is 
 
 ### `src/ingestion/fetcher.py`
 Two sources merged before deduplication:
-- **jobspy / Indeed** — 5 search terms × 25 results, up to 125 listings/run.
-- **JSearch (RapidAPI)** — 1 call/run, broad Java backend query, ~10 Google for Jobs results.
-  Capped at 1 call/run to stay within the 200 req/month free tier (120 calls/month used).
+- **jobspy / Indeed** — 8 search terms × 25 results, up to 200 listings/run.
+- **JSearch (RapidAPI)** — 1 call/run, rotates across 4 queries (one per 6h slot) to vary coverage. ~10 Google for Jobs results per run. Capped at 1 call/run to stay within 200 req/month free tier.
 
-Glassdoor (400 errors), ZipRecruiter (403 bot block), LinkedIn (silent rate limits), and
-native Google Jobs (jobspy cursor broken in v1.1.82) are all excluded.
-Applies hard pre-filters (age ≤ 48h, salary ≥ $100K, visa rejection text, excluded companies).
+Excluded platforms: Glassdoor (400 errors), ZipRecruiter (403 bot block), LinkedIn (silent rate limits), native Google Jobs (jobspy cursor broken in v1.1.82).
+
+Hard pre-filters: age ≤ 48h, salary ≥ $100K, intern/junior title keywords, hard-excluded companies.
+Visa-rejected jobs (explicit "no sponsorship" phrases) are **tagged** `visa_disqualified=True` and kept — they pass through dedup and are persisted as `disqualified` so future runs skip them via the content hash.
 
 ### `src/ingestion/deduplicator.py`
-SHA-256 hash dedup against Postgres. Also queries the `applications` table for recently
-rejected companies (within 90 days) to skip repeat applications *(Phase 11)*.
+SHA-256 hash dedup against Postgres using `company + title + normalised_location`.
+Location is normalised to city-only before hashing (`"New York, NY"` → `"new york"`) so the same job from Indeed and JSearch deduplicates correctly.
+Also queries `applications` for companies rejected within 90 days and drops their jobs before scoring (rejection cooldown).
 
 ### `data/companies.py`
-Three-tier company list sourced from MyVisaJobs FY2025 H1B LCA data (same DOL source as
-H1BGrader). Tier-1/2/3 sets used for scoring bonus. Hard-excluded set contains only
-Infosys / Infosys Limited — all other companies are eligible.
+Three-tier company list sourced from MyVisaJobs FY2025 H1B LCA data. Tier labels are passed to the scorer as context but do **not** affect the score — company tier reflects selectivity, not candidate fit. Hard-excluded set contains only Infosys / Infosys Limited.
 
 ### `src/scoring/scorer.py`
-Claude Haiku scoring (0–100) with resume baked into system prompt. Retry via tenacity.
+Claude Haiku (claude-haiku-4-5) scoring (0–100) with resume baked into system prompt. Pre-disqualified jobs (visa_disqualified=True) short-circuit without an API call — score set to 0 directly. All other jobs scored sequentially (token-per-minute rate limit is the bottleneck; concurrency increases 429 collisions). Retries via tenacity on RateLimitError / APIStatusError.
+
+### `src/scoring/prompts.py`
+System prompt contains: candidate resume (~8 years, Java/Spring/Kafka/cloud), scoring rubric (tech match 50%, seniority fit 30%, domain experience 20%), and calibration examples anchoring each score band. Company tier and salary explicitly neutral — rubric scores fit, not desirability. Job description truncated to first 2,000 + last 1,000 chars (head+tail) so requirements buried at the end of long JDs are not missed.
 
 ### `src/routing/router.py`
-Routes scored jobs into four buckets, sorted by score descending so caps fill highest-first.
-Overflow from human_review cap spills to queued_apply; overflow from auto-apply cap is archived.
+Single apply queue: jobs with score ≥ `auto_apply_threshold` (75) go to `queued_apply`, sorted highest-first. Daily cap: 20 jobs/day. Overflow and sub-threshold jobs → `archived`. No human_review tier.
 
-### `src/apply/playwright_apply.py` *(Phase 7)*
-Scoped to **Indeed Easy Apply only** (`job.url` must contain `indeed.com`).
-
-Thin Python wrapper around a Claude agent + Playwright MCP agentic loop:
-1. Calls Anthropic SDK (`messages.create`) with Playwright MCP tools attached
-2. Claude agent drives the browser via accessibility snapshots — no CSS selectors
-3. Handles login, multi-step forms, work-auth questions, resume upload intelligently
-4. Loop runs until agent signals completion or error; result parsed from final message
-
-Raw Python Playwright was rejected: Indeed Easy Apply forms vary too much across jobs
-(conditional fields, question types, step counts) for hardcoded logic to be reliable.
-Claude reads the page fresh each step — durable across UI changes.
-
-Jobs on Workday/Greenhouse/Oracle stay as `queued_apply` — Cloudflare blocks headless
-browsers on those portals. Surfaced in dashboard Manual Apply Queue for one-click apply.
-Cloudflare Turnstile detected by page title — returns `skipped` so job stays `queued_apply`
-for manual apply rather than `apply_failed`. Telegram alert only fires on genuine errors.
-
-### `src/feedback/gmail_monitor.py` *(Phase 8)*
-Gmail API (google-api-python-client) polls inbox every pipeline run. LinkedIn recruiter
-tracing was dropped — unreliable recruiter targeting and LinkedIn account ban risk outweigh
-the benefit (see Phase 8 decision note in implementation-phases.md).
-
-Classifies each unread email via Claude Haiku into: `confirmation` | `unimportant` |
-`rejection` | `assessment` | `recruiter_reply`. All categories are marked read after
-processing. Action items (assessment, recruiter_reply) are also starred so they surface
-in Gmail's Starred view. Sends Telegram alert for rejection, assessment, recruiter_reply.
-DB auto-update requires `confident=True` AND both company and title extracted — prevents
-a misclassified newsletter from silently mutating a live application's status. Matches
-extracted company + title against jobs table (starts-with ILIKE, statuses: applied /
-phone_screen / interview) — updates DB on confident single match, alerts on ambiguous
-match or zero match.
-
-### `src/calendar/interview_scheduler.py` *(Phase 10)*
-Google Calendar API creates a prep event 24h before confirmed interviews.
-Event body contains: JD summary, recruiter name. Triggered from dashboard when user sets status to `interview`.
+### `src/feedback/gmail_monitor.py`
+Gmail API (google-api-python-client) polls unread emails from the last 48h every pipeline cycle. Classifies via Claude Haiku into: `confirmation` | `unimportant` | `rejection` | `assessment` | `recruiter_reply`. All processed emails are marked read. Action items (assessment, recruiter_reply) are also starred. DB status auto-update requires `confident=True` AND both company and title extracted — prevents misclassified newsletters from mutating live application status. Both `assessment` and `recruiter_reply` advance matched jobs to `phone_screen`.
 
 ### `src/notifications/telegram.py`
-httpx-based Telegram Bot API. High-match alert (top 10 + links) + run summary per cycle.
-
-### `dashboard/app.py`
-Streamlit: Metrics · Human Queue · Applied funnel · All Jobs · Analytics.
-
-Human Queue tab has two sections:
-- **Review Queue** (`human_review`) — Approve (→ `queued_apply` + Application row) / Skip (→ `skipped`).
-- **Manual Apply Queue** (`queued_apply`, non-Indeed URL) — jobs Phase 7 cannot auto-apply to
-  (Workday/Greenhouse/Oracle blocked by Cloudflare). Shown with "Open & Apply" link button for
-  one-click manual apply. Status stays `queued_apply` until the user updates it.
+httpx Telegram Bot API. Three notification types:
+- **High-match alert** — fires when jobs scoring ≥85 are queued this run (top 10 with links)
+- **Run summary** — fired when new jobs are found or an error occurred
+- **Daily queue digest** — fires at 09:00 UTC if any jobs are waiting in apply queue
 
 ### `src/scheduler.py` / `src/main.py`
-APScheduler BlockingScheduler firing `pipeline.run_pipeline()` every 6h, 24/7.
+APScheduler BlockingScheduler. Two jobs:
+- Pipeline every `FETCH_INTERVAL_HOURS` (default 6h)
+- Daily queue digest at 09:00 UTC
+
+### `dashboard/app.py`
+Streamlit dashboard at https://jobhunter.mooo.com. Five tabs:
+- **Apply Queue** — jobs scored ≥75, expandable cards with Open & Apply link, Mark Applied, Skip, and Notes field
+- **Applied** — application funnel chart + status update buttons (Phone Screen / Interview / Offer / Rejected) for in-progress applications
+- **All Jobs** — searchable/filterable full table with score range slider
+- **Analytics** — score distribution histogram, applications over time, jobs by source
+- **Pipeline** — last 20 pipeline runs with fetched/new/scored counts and errors
 
 ---
 
@@ -193,45 +127,41 @@ APScheduler BlockingScheduler firing `pipeline.run_pipeline()` every 6h, 24/7.
 
 ```sql
 CREATE TABLE jobs (
-    id                   VARCHAR(36) PRIMARY KEY,
-    content_hash         VARCHAR(64) UNIQUE NOT NULL,
-    title                VARCHAR(255),
-    company              VARCHAR(255),
-    location             VARCHAR(255),
-    work_type            VARCHAR(50),
-    salary_min           INTEGER,
-    salary_max           INTEGER,
-    salary_text          VARCHAR(255),
-    description          TEXT,
-    url                  TEXT,
-    source               VARCHAR(50),
-    posted_at            TIMESTAMP,
-    fetched_at           TIMESTAMP DEFAULT NOW(),
-    company_health_score INTEGER,
-    score                INTEGER,
-    score_reasoning      TEXT,
-    status               VARCHAR(50) DEFAULT 'new',  -- new/human_review/queued_apply/applied/archived/disqualified/skipped/apply_failed/phone_screen/interview/offer/rejected
-    visa_disqualified    BOOLEAN DEFAULT FALSE,
-    recruiter_name       VARCHAR(255),
-    recruiter_linkedin_url TEXT,
-    outreach_message     TEXT,
-    outreach_sent_at     TIMESTAMP,
-    applied_at           TIMESTAMP,
-    apply_method         VARCHAR(50),
-    notes                TEXT
+    id                VARCHAR(36) PRIMARY KEY,
+    content_hash      VARCHAR(64) UNIQUE NOT NULL,
+    title             VARCHAR(255),
+    company           VARCHAR(255),
+    location          VARCHAR(255),
+    work_type         VARCHAR(50),
+    salary_min        INTEGER,
+    salary_max        INTEGER,
+    salary_text       VARCHAR(255),
+    description       TEXT,
+    url               TEXT,
+    source            VARCHAR(50),        -- 'indeed' | 'jsearch'
+    posted_at         TIMESTAMP,
+    fetched_at        TIMESTAMP DEFAULT NOW(),
+    score             INTEGER,
+    score_reasoning   TEXT,
+    status            VARCHAR(50) DEFAULT 'new',
+    -- status lifecycle: new → queued_apply → applied → phone_screen
+    --                       → interview → offer / rejected
+    --                   new → archived / disqualified / skipped
+    visa_disqualified BOOLEAN DEFAULT FALSE,
+    applied_at        TIMESTAMP,
+    apply_method      VARCHAR(50),
+    notes             TEXT
 );
 
 CREATE TABLE applications (
-    id                VARCHAR(36) PRIMARY KEY,
-    job_id            VARCHAR(36) REFERENCES jobs(id),
-    applied_at        TIMESTAMP DEFAULT NOW(),
-    method            VARCHAR(50),
-    status            VARCHAR(50) DEFAULT 'submitted',
-    interview_date    TIMESTAMP,
-    calendar_event_id VARCHAR(255),
-    offer_amount      INTEGER,
-    notes             TEXT,
-    updated_at        TIMESTAMP DEFAULT NOW()
+    id          VARCHAR(36) PRIMARY KEY,
+    job_id      VARCHAR(36) REFERENCES jobs(id),
+    applied_at  TIMESTAMP DEFAULT NOW(),
+    method      VARCHAR(50),               -- 'manual'
+    status      VARCHAR(50) DEFAULT 'submitted',
+    offer_amount INTEGER,
+    notes       TEXT,
+    updated_at  TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE pipeline_runs (
@@ -240,9 +170,9 @@ CREATE TABLE pipeline_runs (
     jobs_fetched INTEGER DEFAULT 0,
     jobs_new     INTEGER DEFAULT 0,
     jobs_scored  INTEGER DEFAULT 0,
-    human_review INTEGER DEFAULT 0,
-    auto_applied INTEGER DEFAULT 0,
-    error        TEXT                     -- non-null triggers zero-result alert
+    human_review INTEGER DEFAULT 0,        -- always 0, kept for schema compat
+    auto_applied INTEGER DEFAULT 0,        -- always 0, kept for schema compat
+    error        TEXT
 );
 ```
 
@@ -251,49 +181,56 @@ CREATE TABLE pipeline_runs (
 ## Data Flow (Full Pipeline)
 
 ```
-fetch_jobs()                         ← jobspy (Indeed/Google Jobs)
-    └─► pre-filter (age/salary/visa/company)
-         └─► filter_new()            ← SHA-256 dedup (+ DB rejection cooldown: Phase 11)
-              └─► score_jobs()       ← Claude Haiku
-                   └─► route_jobs()
-                        ├─► human_review  → DB + Telegram alert
-                        ├─► auto_apply    → Playwright MCP → DB (applied)
-                        ├─► archived      → DB
-                        └─► disqualified  → DB
+fetch_jobs()
+    ├─► jobspy (Indeed, 8 terms)
+    └─► JSearch (Google for Jobs, 1 rotated call)
+         └─► hard filters (age / salary / title keywords / excluded company)
+              └─► visa phrase filter → tag visa_disqualified=True (keep in batch)
+                   └─► filter_new()     ← SHA-256 dedup + rejection cooldown
+                        └─► score_jobs() ← Claude Haiku (pre-disqualified skip API)
+                             └─► route_jobs()
+                                  ├─► queued_apply  → DB + Telegram alert (if ≥85)
+                                  ├─► archived      → DB
+                                  └─► disqualified  → DB (prevents re-fetch next run)
 
-[parallel, every run]
-gmail_monitor()                      ← Gmail API (google-api-python-client)
-    └─► match reply to applied job
-         └─► update status → phone_screen → Telegram alert
+[every run, parallel]
+check_gmail()
+    └─► fetch unread emails (last 48h)
+         └─► Claude Haiku classify → confirmation / rejection / assessment /
+             recruiter_reply / unimportant
+              └─► mark read / star action items / update DB status / Telegram alert
 
-[on dashboard action: interview confirmed]
-schedule_interview_prep()            ← Google Calendar API (Phase 10)
-    └─► create prep event 24h before
+[daily 09:00 UTC]
+_send_daily_digest()
+    └─► count queued_apply jobs → Telegram reminder if > 0
 ```
 
 ---
 
 ## External Dependencies
 
-| Service | Purpose | MCP? | Auth |
-|---------|---------|------|------|
-| jobspy | Indeed job scraping | Python lib | None |
-| JSearch (RapidAPI) | Google for Jobs index — aggregates Greenhouse/Lever/Workday/company sites | httpx | RapidAPI key |
-| Anthropic API | Claude Haiku — job scoring and Gmail email classification | SDK | API key |
-| Playwright MCP | LLM-driven auto-apply browser | MCP | None |
-| Gmail API | Inbox monitoring, email classification, status updates | google-api-python-client | Google OAuth |
-| Google Calendar MCP | Interview prep automation (Phase 10) | MCP | Google OAuth |
-| Telegram Bot API | Alerts | httpx | Bot token |
-| PostgreSQL | Primary state store | — | Connection string |
-| Redis | Rate counters, dedup cache | — | Connection string |
+| Service | Purpose | Auth |
+|---------|---------|------|
+| jobspy | Indeed job scraping | None |
+| JSearch (RapidAPI) | Google for Jobs index — aggregates Greenhouse/Lever/Workday/company sites | RapidAPI key |
+| Anthropic API | Claude Haiku — job scoring and email classification | API key |
+| Gmail API | Inbox monitoring, email classification, status updates | Google OAuth |
+| Telegram Bot API | Alerts and daily digest | Bot token |
+| PostgreSQL | Primary state store | Connection string |
+| Redis | Available in Docker Compose — not actively used | Connection string |
 
 ---
 
-## Deployment (VPS)
+## Deployment
 
 ```bash
-# Clone repo, fill .env, then:
-docker compose up -d                      # postgres + redis + scheduler + dashboard
-docker compose logs -f scheduler          # watch pipeline runs
-# Dashboard: http://<vps-ip>:8501
+# VPS: Hetzner CPX11, Ubuntu 24.04, 5.78.207.143
+# Public URL: https://jobhunter.mooo.com (FreeDNS → Nginx → Streamlit)
+
+git clone https://github.com/Rishav30194/job-hunter /opt/job-hunter
+cp .env.example .env   # fill all values
+docker compose up -d --build                    # all 4 services
+docker compose exec scheduler alembic upgrade head
+# Nginx + SSL: see deploy/nginx.conf + certbot --nginx -d jobhunter.mooo.com
+# Basic auth: htpasswd -c /etc/nginx/.htpasswd rishav
 ```

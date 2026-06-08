@@ -2,41 +2,44 @@
 
 ## What This Is
 
-An autonomous, 24/7 job search and application system tailored for a Senior Java/Backend Engineer
-targeting Tier-1 and Tier-2 tech and finance companies in the US job market.
+An autonomous, 24/7 job search and application tracking system tailored for a Senior Java/Backend
+Engineer targeting US tech and finance companies.
 
-The system runs continuously on a VPS, fetches fresh job postings every 6 hours from multiple
-platforms (Indeed, Google Jobs), scores each posting using Claude AI against a detailed candidate
-profile, routes high-match jobs to a human review queue, and auto-applies to mid-match jobs —
-all without manual intervention.
+The system runs continuously on a Hetzner VPS, fetches fresh job postings every 6 hours from
+Indeed and Google for Jobs, scores each posting using Claude AI against the candidate's actual
+resume and experience, routes high-match jobs to an apply queue, monitors Gmail for recruiter
+replies, and provides a full dashboard for managing applications — all without manual intervention
+beyond the apply button itself.
 
 ## Goals
 
 | Goal | Mechanism |
 |------|-----------|
 | Zero stale listings | Hard 48-hour cutoff on all fetched jobs |
-| Minimize human time | Auto-apply for score 75–84 (cap 20/day); human reviews top 5 per run (score ≥ 85) |
-| Maximum coverage | 5 search terms × Indeed + Google Jobs per run |
-| Smart filtering | Claude Haiku scores each job against actual resume |
-| Visa safety | Explicit "no sponsorship" text → auto-discard |
-| Inbox awareness | Gmail monitor classifies replies, updates status, alerts on action items |
-| Full visibility | Streamlit dashboard with funnel metrics and one-click actions |
+| Minimal human time | Apply Queue shows only scored ≥75 jobs; one click to open and apply |
+| Maximum coverage | 8 search terms × Indeed + JSearch (Google for Jobs) per run |
+| Accurate scoring | Claude Haiku scores fit (not desirability) — tier and salary are neutral |
+| Visa safety | Explicit "no sponsorship" phrases → auto-discard, persisted to DB |
+| No repeat rejections | 90-day cooldown on companies that rejected you |
+| Inbox awareness | Gmail monitor classifies replies, updates funnel, alerts on action items |
+| Full visibility | Streamlit dashboard with funnel metrics, notes, status updates |
 
 ## Target Profile
 
 - **Candidate:** Rishavsingh Kshatriya
-- **Experience:** 6+ years, Senior Java/Backend Engineer
+- **Experience:** ~8 years, Senior Java/Backend Engineer
 - **Core Stack:** Java 17/21, Spring Boot, Kafka, AWS/Azure, Microservices
 - **Domains:** Financial services, Healthcare, Enterprise SaaS
-- **Roles:** Senior Software Engineer, Backend Engineer, Sr Java Developer
+- **Roles:** Senior Software Engineer, Staff Engineer, Backend Engineer, Senior Java Developer
 - **Salary Floor:** $100,000/year base
 - **Location:** Remote / Hybrid / Onsite — anywhere in US
-- **Seniority Target:** Roles requiring 3–7 years of experience
+- **Seniority Target:** Roles requiring 5–10 years of experience
 
 ## Target Companies
 
 > Source: MyVisaJobs FY2025 H1B LCA data (same DOL source as H1BGrader).
-> Tiers affect scoring weight only — all tiers are eligible. Only Infosys is excluded.
+> Tiers are passed to the scorer as context but do NOT affect the score.
+> Only Infosys is hard-excluded.
 
 **Tier-1 — Highest H1B volume + top brand**
 - **Tech:** Amazon, Amazon Web Services, Microsoft, Google, Apple, Meta, IBM, Tesla, Intel, Qualcomm, Salesforce, Nvidia, Oracle, Cisco, Adobe, ServiceNow, LinkedIn, eBay, Micron, Hewlett Packard Enterprise, Expedia, Bloomberg, ADP, AT&T, Comcast, T-Mobile, Charter Communications
@@ -44,7 +47,7 @@ all without manual intervention.
 
 **Tier-2 — Active H1B sponsors, strong product companies**
 - **Big Consulting (tech engineering roles):** Accenture, Deloitte, Ernst & Young (EY), PricewaterhouseCoopers (PwC), Boston Consulting Group, McKinsey & Company
-- **Tech:** ByteDance, TikTok, Uber, DoorDash, AMD (Advanced Micro Devices), Palo Alto Networks, Stripe, Snowflake, Databricks, Palantir, Cloudflare, CrowdStrike, Workday, Twilio, MongoDB, Elastic, Datadog, Splunk, Broadcom, DocuSign, Airbnb, Lyft, Cognizant Technology Solutions
+- **Tech:** ByteDance, TikTok, Uber, DoorDash, AMD, Palo Alto Networks, Stripe, Snowflake, Databricks, Palantir, Cloudflare, CrowdStrike, Workday, Twilio, MongoDB, Elastic, Datadog, Splunk, Broadcom, DocuSign, Airbnb, Lyft, Cognizant Technology Solutions
 - **Finance/Fintech:** Robinhood, Coinbase, SoFi, Citadel, Two Sigma, D.E. Shaw, Point72, Millennium Management, Jane Street, State Street, Vanguard, T. Rowe Price, Northern Trust, Elevance Health (Anthem)
 
 **Tier-3 — All other eligible H1B sponsors**
@@ -54,7 +57,7 @@ all without manual intervention.
 - **Other Industries with Java engineering roles:** Walmart Global Tech, FedEx Technology, Ford Motor, General Motors, Cummins, Rivian, Lucid Motors, Eli Lilly, Target Tech, Wayfair, Chewy, Epic Systems, Veeva Systems, Tyler Technologies
 
 **Hard Excluded**
-- Infosys / Infosys Limited — hard-excluded (do not apply)
+- Infosys / Infosys Limited — do not apply
 
 ## What Gets Automated
 
@@ -63,17 +66,19 @@ all without manual intervention.
 | Fetching jobs every 6h | ✅ Fully |
 | Deduplication | ✅ Fully |
 | Visa sponsorship check | ✅ Fully |
+| Rejection cooldown (90 days) | ✅ Fully |
 | AI scoring (0–100) | ✅ Fully |
-| Telegram alerts (high match + run summary) | ✅ Fully |
-| Gmail inbox monitoring (classify replies, update status) | ✅ Fully (Phase 8) |
-| Auto-apply for Indeed Easy Apply jobs (score 75–84, cap 20/day) | ✅ Fully (Phase 7) |
-| One-click manual apply for Workday/Greenhouse/company sites | 🙋 Human (dashboard button) |
-| Final approval for score ≥ 85 | 🙋 Human (one click in dashboard) |
+| Telegram alerts (high match + run summary + daily digest) | ✅ Fully |
+| Gmail inbox monitoring (classify replies, update status) | ✅ Fully |
+| 30-day queue expiry (stale jobs archived automatically) | ✅ Fully |
+| Applying to jobs | 🙋 Human (one click per job in dashboard) |
+| Status updates (phone screen → interview → offer/rejected) | 🙋 Human (dashboard buttons) or auto via Gmail |
 
 ## Non-Goals
 
-- Does not restrict scraping to specific companies — all listings are fetched and scored; tiers only affect score weighting
-- Does not apply to roles requiring security clearance
-- Does not attempt to automate Workday, Greenhouse, Lever, Oracle HCM, or any ATS behind Cloudflare Bot Management — those require human apply via dashboard
+- Does not auto-apply — all applications are manual via the dashboard Apply Queue
+- Does not attempt to automate Workday, Greenhouse, Lever, Oracle HCM, or any ATS behind Cloudflare
 - Does not bypass CAPTCHA or violate platform ToS
+- Does not restrict scraping to specific companies — all listings are fetched and scored
+- Does not apply to roles requiring security clearance
 - Does not store or log any secrets or credentials in code
