@@ -404,10 +404,11 @@ def _handle_action_item(
         db_note = (
             f"Matched: <b>{html.escape(matches[0].title)}</b> @ <b>{html.escape(matches[0].company)}</b>"
         )
-        if category == "recruiter_reply" and can_auto_update:
+        # Both recruiter_reply and assessment signal you've passed initial screening.
+        if category in ("recruiter_reply", "assessment") and can_auto_update:
             _update_job_status(matches[0].id, "phone_screen")
             db_note += " → status updated to phone_screen"
-        elif category == "recruiter_reply" and not can_auto_update:
+        elif category in ("recruiter_reply", "assessment") and not can_auto_update:
             db_note += " — low confidence, verify and update manually"
     elif len(matches) > 1:
         db_note = f"⚠️ {len(matches)} possible matches for {html.escape(company)} — check inbox"

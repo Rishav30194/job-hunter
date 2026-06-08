@@ -1,6 +1,7 @@
 """Scores job listings 0–100 against the candidate profile using Claude Haiku."""
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import anthropic
 from tenacity import (
@@ -32,34 +33,53 @@ _SYSTEM_CONTENT: list[dict] = [
 ]
 
 _TIER_LABELS = {1: "Tier-1", 2: "Tier-2", 3: "Tier-3"}
+_MAX_WORKERS = 5
 
 
 def score_jobs(jobs: list[dict]) -> list[dict]:
-    """Score each job and return the list with score, reasoning, and visa_disqualified set.
+    """Score each job concurrently and return results in input order.
 
-    Jobs that fail after all retries get score=None so the pipeline routes them
-    to a fallback bucket rather than crashing the run.
+    Pre-disqualified jobs (visa_disqualified=True from phrase filter) skip the
+    API call entirely. Remaining jobs are scored in parallel up to _MAX_WORKERS
+    concurrent requests. Jobs that fail after all retries get score=None.
     """
-    results = []
-
     for job in jobs:
         job["_tier_label"] = _TIER_LABELS.get(get_tier(job.get("company", "")), "Unknown")
-        try:
-            scored = _score_one(job)
-        except Exception:
-            logger.exception(
-                "Scoring failed permanently for '%s' @ '%s'",
-                job.get("title"), job.get("company"),
-            )
-            scored = job | {"score": None, "score_reasoning": "Scoring failed", "visa_disqualified": False}
-        results.append(scored)
+
+    results: list[dict | None] = [None] * len(jobs)
+
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
+        future_to_idx = {
+            executor.submit(_score_safe, job): i for i, job in enumerate(jobs)
+        }
+        for future in as_completed(future_to_idx):
+            i = future_to_idx[future]
+            results[i] = future.result()
 
     logger.info(
         "Scored %d/%d jobs successfully",
-        sum(1 for j in results if j["score"] is not None),
+        sum(1 for j in results if j and j["score"] is not None),
         len(results),
     )
-    return results
+    return results  # type: ignore[return-value]
+
+
+def _score_safe(job: dict) -> dict:
+    """Wrapper that short-circuits pre-disqualified jobs and catches all scorer errors."""
+    if job.get("visa_disqualified"):
+        return job | {
+            "score": 0,
+            "score_reasoning": "Visa sponsorship explicitly rejected in job description.",
+            "visa_disqualified": True,
+        }
+    try:
+        return _score_one(job)
+    except Exception:
+        logger.exception(
+            "Scoring failed permanently for '%s' @ '%s'",
+            job.get("title"), job.get("company"),
+        )
+        return job | {"score": None, "score_reasoning": "Scoring failed", "visa_disqualified": False}
 
 
 @retry(
@@ -73,12 +93,11 @@ def _score_one(job: dict) -> dict:
 
     Retries up to 3 times on rate limit or transient API errors with exponential backoff.
     Validates stop_reason and tool block presence before accessing the result.
-    Description truncation is handled inside build_user_prompt (3,000 chars).
+    Description truncation is handled inside build_user_prompt (head + tail).
     """
-
     response = _client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=512,  # raised from 300 — verbose JDs produce longer reasoning fields
+        max_tokens=512,
         temperature=0,
         system=_SYSTEM_CONTENT,
         tools=[SCORING_TOOL],

@@ -12,14 +12,32 @@ from src.db.models import Application, Job
 logger = logging.getLogger(__name__)
 
 
+def _normalize_location(location: str | None) -> str:
+    """Reduce location to city-only so Indeed and JSearch representations match.
+
+    "New York, NY" and "New York" both become "new york".
+    Remote variations all become "remote".
+    """
+    if not location:
+        return ""
+    loc = location.strip().lower()
+    if "remote" in loc:
+        return "remote"
+    return loc.split(",")[0].strip()
+
+
 def compute_hash(company: str, title: str, location: str | None) -> str:
-    """Return a SHA-256 hex digest of company + title + location.
+    """Return a SHA-256 hex digest of company + title + normalised location.
 
     This is the canonical deduplication key — two listings for the same
     role at the same company in the same location are treated as identical
     regardless of which platform or run they came from.
     """
-    raw = f"{(company or '').strip().lower()}|{(title or '').strip().lower()}|{(location or '').strip().lower()}"
+    raw = (
+        f"{(company or '').strip().lower()}"
+        f"|{(title or '').strip().lower()}"
+        f"|{_normalize_location(location)}"
+    )
     return hashlib.sha256(raw.encode()).hexdigest()
 
 

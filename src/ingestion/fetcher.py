@@ -301,9 +301,10 @@ def _apply_filters(jobs: list[dict]) -> list[dict]:
         if is_excluded(job["company"]):
             continue
 
-        # Explicit visa rejection in description
+        # Explicit visa rejection — tag and keep so the hash lands in the DB
+        # and future runs dedup it out instead of re-fetching and re-filtering.
         if _is_visa_rejected(job["description"]):
-            continue
+            job["visa_disqualified"] = True
 
         results.append(job)
 

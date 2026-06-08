@@ -238,8 +238,9 @@ def build_user_prompt(job: dict) -> str:
     truncation point — scorer.py does not pre-truncate.
     """
     description = job.get("description") or ""
-    if len(description) > 3000:
-        description = description[:3000] + "... [truncated]"
+    _HEAD, _TAIL = 2000, 1000
+    if len(description) > _HEAD + _TAIL:
+        description = description[:_HEAD] + "\n...\n" + description[-_TAIL:]
 
     salary = job.get("salary_text") or "Not stated"
     tier = job.get("_tier_label") or "Unknown"

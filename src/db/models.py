@@ -38,15 +38,12 @@ class Job(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Scoring
-    company_health_score: Mapped[int | None] = mapped_column(Integer)
     score: Mapped[int | None] = mapped_column(Integer)
     score_reasoning: Mapped[str | None] = mapped_column(Text)
 
     # Routing
     status: Mapped[str] = mapped_column(String(50), default="new", index=True)
     visa_disqualified: Mapped[bool] = mapped_column(Boolean, default=False)
-
-    recruiter_name: Mapped[str | None] = mapped_column(String(255))
 
     # Application tracking
     applied_at: Mapped[datetime | None] = mapped_column(DateTime)
