@@ -1,4 +1,4 @@
-"""Streamlit dashboard — metrics, apply queue, applied funnel, all jobs, analytics."""
+"""Streamlit dashboard — metrics, apply queue, applied funnel, all jobs, analytics, pipeline history."""
 
 from datetime import datetime
 
@@ -82,6 +82,33 @@ def _query_applications_over_time() -> list[dict]:
         return [{"date": str(r.date), "count": r.count} for r in rows]
 
 
+def _query_source_distribution() -> list[dict]:
+    with get_session() as session:
+        rows = session.execute(
+            select(Job.source, func.count(Job.id).label("count"))
+            .where(Job.source.isnot(None))
+            .group_by(Job.source)
+        ).all()
+        return [{"source": r.source, "count": r.count} for r in rows]
+
+
+def _query_pipeline_runs() -> list[dict]:
+    with get_session() as session:
+        rows = session.scalars(
+            select(PipelineRun).order_by(PipelineRun.ran_at.desc()).limit(20)
+        ).all()
+        return [
+            {
+                "ran_at": r.ran_at,
+                "fetched": r.jobs_fetched,
+                "new": r.jobs_new,
+                "scored": r.jobs_scored,
+                "error": r.error or "",
+            }
+            for r in rows
+        ]
+
+
 def _job_to_dict(job: Job) -> dict:
     return {
         "id": job.id,
@@ -99,6 +126,7 @@ def _job_to_dict(job: Job) -> dict:
         "applied_at": job.applied_at,
         "score_reasoning": job.score_reasoning or "",
         "visa_disqualified": job.visa_disqualified,
+        "notes": job.notes or "",
     }
 
 
@@ -113,7 +141,7 @@ def _skip_job(job_id: str) -> None:
             job.status = "skipped"
 
 
-def _mark_applied(job_id: str) -> None:
+def _mark_applied(job_id: str, note: str = "") -> None:
     """Set job status to applied, record applied_at, and create an Application row."""
     from datetime import timezone as _tz
     with get_session() as session:
@@ -122,11 +150,34 @@ def _mark_applied(job_id: str) -> None:
             job.status = "applied"
             job.applied_at = datetime.now(_tz.utc)
             job.apply_method = "manual"
+            if note:
+                job.notes = note
             existing = session.scalars(
                 select(Application).where(Application.job_id == job_id)
             ).first()
             if not existing:
                 session.add(Application(job_id=job_id, method="manual"))
+
+
+def _update_status(job_id: str, new_status: str) -> None:
+    """Advance a job through the post-apply funnel and sync the Application row."""
+    with get_session() as session:
+        job = session.get(Job, job_id)
+        if job:
+            job.status = new_status
+            app = session.scalars(
+                select(Application).where(Application.job_id == job_id)
+            ).first()
+            if app:
+                app.status = new_status
+                app.updated_at = datetime.utcnow()
+
+
+def _save_note(job_id: str, note: str) -> None:
+    with get_session() as session:
+        job = session.get(Job, job_id)
+        if job:
+            job.notes = note
 
 
 # ---------------------------------------------------------------------------
@@ -153,8 +204,8 @@ st.divider()
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_queue, tab_applied, tab_all, tab_analytics = st.tabs(
-    ["Apply Queue", "Applied", "All Jobs", "Analytics"]
+tab_queue, tab_applied, tab_all, tab_analytics, tab_pipeline = st.tabs(
+    ["Apply Queue", "Applied", "All Jobs", "Analytics", "Pipeline"]
 )
 
 # ── Apply Queue ───────────────────────────────────────────────────────────────
@@ -183,13 +234,23 @@ with tab_queue:
                     st.write(f"**Salary:** {job['salary_text'] or 'Not listed'}")
                     if job["score_reasoning"]:
                         st.caption(job["score_reasoning"])
+                    note_val = st.text_area(
+                        "Notes",
+                        value=job["notes"],
+                        placeholder="Resume version used, recruiter name, anything to remember...",
+                        key=f"note_{job['id']}",
+                        height=80,
+                    )
+                    if st.button("Save Note", key=f"savenote_{job['id']}"):
+                        _save_note(job["id"], note_val)
+                        st.success("Note saved.")
                 with col_r:
                     if job["url"]:
                         st.link_button("Open & Apply", job["url"], type="primary")
                     else:
                         st.write("No URL")
                     if st.button("Mark Applied", key=f"applied_{job['id']}"):
-                        _mark_applied(job["id"])
+                        _mark_applied(job["id"], note_val)
                         st.success("Marked as applied.")
                         st.rerun()
                     if st.button("Skip", key=f"skip_{job['id']}"):
@@ -222,6 +283,34 @@ with tab_applied:
         st.info("No applications yet.")
 
     st.caption(f"Rejected: {rejected_count}")
+
+    # Status update cards — only for in-progress applications
+    active = [j for j in applied_jobs if j["status"] in ("applied", "phone_screen", "interview")]
+    if active:
+        st.subheader("Update Status")
+        _NEXT = {
+            "applied": ("Phone Screen", "phone_screen"),
+            "phone_screen": ("Interview", "interview"),
+            "interview": ("Offer", "offer"),
+        }
+        for job in active:
+            label = f"**{job['title']}** @ {job['company']}  |  {job['status'].replace('_', ' ').title()}"
+            with st.expander(label):
+                st.write(f"**Location:** {job['location']}  |  **Salary:** {job['salary_text'] or 'Not listed'}")
+                if job["notes"]:
+                    st.caption(f"Notes: {job['notes']}")
+                col_a, col_b, col_c = st.columns(3)
+                next_label, next_status = _NEXT[job["status"]]
+                if col_a.button(f"✓ {next_label}", key=f"next_{job['id']}"):
+                    _update_status(job["id"], next_status)
+                    st.success(f"Moved to {next_label}.")
+                    st.rerun()
+                if col_b.button("✗ Rejected", key=f"reject_{job['id']}"):
+                    _update_status(job["id"], "rejected")
+                    st.warning("Marked as rejected.")
+                    st.rerun()
+                if job["url"] and col_c.button("Open", key=f"open_{job['id']}"):
+                    st.markdown(f"[Open job]({job['url']})")
 
     st.subheader("Application Log")
     if applied_jobs:
@@ -322,3 +411,46 @@ with tab_analytics:
             st.plotly_chart(fig_line, use_container_width=True)
         else:
             st.info("No applications over time yet.")
+
+    st.subheader("Jobs by Source")
+    try:
+        source_data = _query_source_distribution()
+    except Exception as e:
+        st.error(f"Could not load source data: {e}")
+        source_data = []
+    if source_data:
+        df_src = pd.DataFrame(source_data)
+        fig_src = px.bar(df_src, x="source", y="count",
+                         labels={"source": "Source", "count": "Jobs"},
+                         color_discrete_sequence=["#4f8bf9"])
+        st.plotly_chart(fig_src, use_container_width=True)
+    else:
+        st.info("No source data yet.")
+
+# ── Pipeline History ──────────────────────────────────────────────────────────
+with tab_pipeline:
+    st.subheader("Pipeline Run History")
+    st.caption("Last 20 runs — refreshes on page reload.")
+    try:
+        runs = _query_pipeline_runs()
+    except Exception as e:
+        st.error(f"Could not load pipeline history: {e}")
+        runs = []
+
+    if not runs:
+        st.info("No pipeline runs recorded yet.")
+    else:
+        df_runs = pd.DataFrame(runs)
+        df_runs["ran_at"] = pd.to_datetime(df_runs["ran_at"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M UTC").fillna("—")
+        st.dataframe(
+            df_runs,
+            column_config={
+                "ran_at": st.column_config.TextColumn("Run At"),
+                "fetched": st.column_config.NumberColumn("Fetched"),
+                "new": st.column_config.NumberColumn("New"),
+                "scored": st.column_config.NumberColumn("Scored"),
+                "error": st.column_config.TextColumn("Error"),
+            },
+            use_container_width=True,
+            hide_index=True,
+        )

@@ -18,6 +18,18 @@ SEARCH_TERMS: list[str] = [
     "Senior Java Developer",
     "Java Software Engineer",
     "Senior Backend Engineer",
+    "Staff Engineer Java",
+    "Java Microservices Engineer",
+    "Senior Java Engineer financial services",
+]
+
+# Rotated across runs (4 runs/day × 4 queries = full cycle daily).
+# Selected by UTC hour slot so each run uses a different query.
+JSEARCH_QUERIES: list[str] = [
+    "Senior Java Backend Engineer United States",
+    "Senior Software Engineer Java Spring Boot United States",
+    "Staff Engineer Java microservices United States",
+    "Senior Java Developer fintech finance United States",
 ]
 
 # Glassdoor excluded — jobspy location parsing bug (400 errors).
@@ -113,6 +125,10 @@ def _fetch_jsearch() -> list[dict]:
         return []
 
     try:
+        hour_slot = datetime.now(timezone.utc).hour // 6  # 0–3, one per 6h run
+        query = JSEARCH_QUERIES[hour_slot % len(JSEARCH_QUERIES)]
+        logger.info("JSearch query (slot %d): %s", hour_slot, query)
+
         response = httpx.get(
             "https://jsearch.p.rapidapi.com/search",
             headers={
@@ -120,7 +136,7 @@ def _fetch_jsearch() -> list[dict]:
                 "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
             },
             params={
-                "query": "Senior Java Backend Engineer United States",
+                "query": query,
                 "num_pages": "1",
                 "date_posted": "3days",
                 "country": "us",

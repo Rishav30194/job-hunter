@@ -73,6 +73,17 @@ def send_high_match_alert(jobs: list[dict]) -> None:
     send_message("\n".join(lines))
 
 
+def send_queue_digest(queued_count: int) -> None:
+    """Send a daily reminder if there are jobs waiting in the apply queue."""
+    if queued_count == 0:
+        return
+    send_message(
+        f"<b>Apply Queue Reminder</b>\n\n"
+        f"You have <b>{queued_count}</b> job{'s' if queued_count != 1 else ''} waiting.\n"
+        f"Open dashboard: https://jobhunter.mooo.com"
+    )
+
+
 def send_run_summary(stats: dict) -> None:
     """Send a pipeline run summary with job counts for each routing bucket.
 
