@@ -1,7 +1,6 @@
 """Scores job listings 0–100 against the candidate profile using Claude Haiku."""
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import anthropic
 from tenacity import (
@@ -33,35 +32,25 @@ _SYSTEM_CONTENT: list[dict] = [
 ]
 
 _TIER_LABELS = {1: "Tier-1", 2: "Tier-2", 3: "Tier-3"}
-_MAX_WORKERS = 5
-
-
 def score_jobs(jobs: list[dict]) -> list[dict]:
-    """Score each job concurrently and return results in input order.
+    """Score each job and return results in input order.
 
     Pre-disqualified jobs (visa_disqualified=True from phrase filter) skip the
-    API call entirely. Remaining jobs are scored in parallel up to _MAX_WORKERS
-    concurrent requests. Jobs that fail after all retries get score=None.
+    API call entirely. Jobs are scored sequentially — the binding constraint is
+    the Anthropic token-per-minute rate limit, not network I/O, so concurrency
+    would only increase 429 collisions and backoff delays.
     """
     for job in jobs:
         job["_tier_label"] = _TIER_LABELS.get(get_tier(job.get("company", "")), "Unknown")
 
-    results: list[dict | None] = [None] * len(jobs)
-
-    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-        future_to_idx = {
-            executor.submit(_score_safe, job): i for i, job in enumerate(jobs)
-        }
-        for future in as_completed(future_to_idx):
-            i = future_to_idx[future]
-            results[i] = future.result()
+    results = [_score_safe(job) for job in jobs]
 
     logger.info(
         "Scored %d/%d jobs successfully",
-        sum(1 for j in results if j and j["score"] is not None),
+        sum(1 for j in results if j["score"] is not None),
         len(results),
     )
-    return results  # type: ignore[return-value]
+    return results
 
 
 def _score_safe(job: dict) -> dict:
