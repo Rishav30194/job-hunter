@@ -18,8 +18,16 @@ st.title("Job Hunter Dashboard")
 # ---------------------------------------------------------------------------
 
 def _query_metrics() -> dict:
+    """Counts for the top metrics row. All date boundaries are UTC, matching storage."""
+    from datetime import timedelta, timezone as _tz
+    now = datetime.now(_tz.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = now - timedelta(days=7)
+
     with get_session() as session:
-        scanned = session.scalar(select(func.count(Job.id))) or 0
+        to_apply = session.scalar(
+            select(func.count(Job.id)).where(Job.status.in_(["queued_apply", "human_review"]))
+        ) or 0
         high_match = session.scalar(
             select(func.count(Job.id)).where(Job.score >= 85)
         ) or 0
@@ -28,10 +36,19 @@ def _query_metrics() -> dict:
                 Job.status.in_(["applied", "phone_screen", "interview", "offer", "rejected"])
             )
         ) or 0
+        applied_today = session.scalar(
+            select(func.count(Job.id)).where(Job.applied_at >= today_start)
+        ) or 0
+        applied_week = session.scalar(
+            select(func.count(Job.id)).where(Job.applied_at >= week_start)
+        ) or 0
         interviews = session.scalar(
             select(func.count(Job.id)).where(Job.status == "interview")
         ) or 0
-    return dict(scanned=scanned, high_match=high_match, applied=applied, interviews=interviews)
+    return dict(
+        to_apply=to_apply, high_match=high_match, applied=applied,
+        applied_today=applied_today, applied_week=applied_week, interviews=interviews,
+    )
 
 
 def _query_apply_queue() -> list[dict]:
@@ -190,13 +207,16 @@ try:
 except Exception as _db_err:
     _db_ok = False
     st.error(f"Database unavailable — {_db_err.__class__.__name__}: {_db_err}")
-    metrics = dict(scanned=0, high_match=0, applied=0, interviews=0)
+    metrics = dict(to_apply=0, high_match=0, applied=0,
+                   applied_today=0, applied_week=0, interviews=0)
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Scanned", metrics["scanned"])
+c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1.metric("To Apply (≥75)", metrics["to_apply"])
 c2.metric("High Match (≥85)", metrics["high_match"])
 c3.metric("Applied", metrics["applied"])
-c4.metric("Interviews", metrics["interviews"])
+c4.metric("Applied Today", metrics["applied_today"])
+c5.metric("Applied (7d)", metrics["applied_week"])
+c6.metric("Interviews", metrics["interviews"])
 
 st.divider()
 
