@@ -27,8 +27,9 @@
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                    LLM SCORING ENGINE                              │   │
-│  │  Claude Haiku — scores each job 0–100                             │   │
+│  │  Claude Haiku — scores each job 0–100 via Message Batch (50% $)   │   │
 │  │  Pre-disqualified (visa) jobs skip API call — score=0 directly    │   │
+│  │  Cached system prompt (>4,096 tok) — prefix reads at 1/10 price   │   │
 │  │  Rubric: tech stack · seniority fit · domain experience           │   │
 │  │  Company tier and salary do NOT affect score                      │   │
 │  │  Returns: score · reasoning · visa_disqualified flag              │   │
@@ -80,7 +81,7 @@ Two sources merged before deduplication:
 Excluded platforms: Glassdoor (400 errors), ZipRecruiter (403 bot block), LinkedIn (silent rate limits), native Google Jobs (jobspy cursor broken in v1.1.82).
 
 Hard pre-filters: age ≤ 48h, salary ≥ $100K, intern/junior title keywords, hard-excluded companies.
-Visa-rejected jobs (explicit "no sponsorship" phrases) are **tagged** `visa_disqualified=True` and kept — they pass through dedup and are persisted as `disqualified` so future runs skip them via the content hash.
+Visa-rejected jobs (explicit "no sponsorship" phrases, US-citizenship mandates, or security-clearance requirements) are **tagged** `visa_disqualified=True` and kept — they pass through dedup and are persisted as `disqualified` so future runs skip them via the content hash.
 
 ### `src/ingestion/deduplicator.py`
 SHA-256 hash dedup against Postgres using `company + title + normalised_location`.
@@ -91,7 +92,7 @@ Also queries `applications` for companies rejected within 90 days and drops thei
 Three-tier company list sourced from MyVisaJobs FY2025 H1B LCA data. Tier labels are passed to the scorer as context but do **not** affect the score — company tier reflects selectivity, not candidate fit. Hard-excluded set contains only Infosys / Infosys Limited.
 
 ### `src/scoring/scorer.py`
-Claude Haiku (claude-haiku-4-5) scoring (0–100) with resume baked into system prompt. Pre-disqualified jobs (visa_disqualified=True) short-circuit without an API call — score set to 0 directly. All other jobs scored sequentially (token-per-minute rate limit is the bottleneck; concurrency increases 429 collisions). Retries via tenacity on RateLimitError / APIStatusError.
+Claude Haiku (claude-haiku-4-5) scoring (0–100) with resume baked into system prompt. Pre-disqualified jobs (visa_disqualified=True) short-circuit without an API call — score set to 0 directly. All other jobs are submitted as one Message Batch (50% of standard token price; the 6-hour cadence easily absorbs batch latency — polled every 30s, 2-hour ceiling). Jobs whose batch entry errors — or all of them, if the batch itself fails — fall back to the sequential path with tenacity retries on RateLimitError / APIStatusError. The system prompt is kept above Haiku's 4,096-token cacheable minimum so the `cache_control` breakpoint is effective: sequential calls (and batch entries, best-effort) read the ~4,200-token prefix at one-tenth input price instead of full price.
 
 ### `src/scoring/prompts.py`
 System prompt contains: candidate resume (~8 years, Java/Spring/Kafka/cloud), scoring rubric (tech match 50%, seniority fit 30%, domain experience 20%), and calibration examples anchoring each score band. Company tier and salary explicitly neutral — rubric scores fit, not desirability. Job description truncated to first 2,000 + last 1,000 chars (head+tail) so requirements buried at the end of long JDs are not missed.
@@ -187,7 +188,9 @@ fetch_jobs()
          └─► hard filters (age / salary / title keywords / excluded company)
               └─► visa phrase filter → tag visa_disqualified=True (keep in batch)
                    └─► filter_new()     ← SHA-256 dedup + rejection cooldown
-                        └─► score_jobs() ← Claude Haiku (pre-disqualified skip API)
+                        └─► score_jobs() ← Claude Haiku via Message Batch
+                                            (50% price; pre-disqualified skip API;
+                                             sequential fallback on batch failure)
                              └─► route_jobs()
                                   ├─► queued_apply  → DB + Telegram alert (if ≥85)
                                   ├─► archived      → DB

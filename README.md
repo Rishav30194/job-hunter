@@ -14,12 +14,13 @@ Every 6 hours
   │           JSearch → Google for Jobs (1 rotated call, ~10 listings)
   │
   ├── Filter  Age ≤ 48h · Salary ≥ $100K · Skip intern/junior titles
-  │           Tag explicit "no sponsorship" listings as visa_disqualified
+  │           Tag "no sponsorship" / citizenship / clearance listings as visa_disqualified
   │
   ├── Dedup   SHA-256(company + title + location) vs PostgreSQL
   │           Skip companies rejected within 90 days (cooldown)
   │
   ├── Score   Claude Haiku scores each job 0–100 against your resume
+  │           (Message Batch API at 50% token price, cached system prompt)
   │           Rubric: tech match (50%) · seniority fit (30%) · domain (20%)
   │           Pre-disqualified jobs skip the API call entirely
   │
@@ -124,7 +125,7 @@ htpasswd -c /etc/nginx/.htpasswd youruser    # basic auth
 
 ## Scoring Rubric
 
-Claude Haiku receives the candidate's resume baked into the system prompt and evaluates each job description on three dimensions:
+Claude Haiku receives the candidate's resume baked into the system prompt and evaluates each job description on three dimensions. Scoring runs through the Message Batches API (50% of standard token price — the 6-hour cadence absorbs batch latency), with a sequential fallback if a batch fails. The system prompt is kept above the model's 4,096-token cache minimum so repeat calls read it at one-tenth input price.
 
 | Dimension | Weight | What it measures |
 |-----------|--------|-----------------|

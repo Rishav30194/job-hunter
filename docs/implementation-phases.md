@@ -534,3 +534,9 @@ curl http://localhost:8501                 # dashboard responds 200
 | 10 | Interview Calendar (Google Calendar API) | 🚫 Dropped |
 | 11 | Rejection Cooldown (DB-based) | ✅ Complete |
 | 12 | VPS Deployment (jobhunter.mooo.com) | ✅ Complete |
+
+## Post-Launch Improvements (2026-06-09)
+
+- **Visa filter hardened** — citizenship / security-clearance / TS-SCI phrases now pre-disqualify in `fetcher.py` (full-text scan, no API cost) and in the scoring rubric. Previously only explicit "no sponsorship" wording was caught; a Workday US-Federal job slipped through.
+- **Gmail rejection matching fixed** — company match changed from starts-with to contains ILIKE; "Cigna" now matches the stored "The Cigna Group" (real missed rejection, corrected in the VPS DB).
+- **Cost optimization (~$40/mo → ~$8–15/mo API spend)** — scoring moved to the Message Batches API (50% token price, sequential fallback on failure), and the scoring system prompt was expanded past Haiku 4.5's 4,096-token cache minimum (it silently failed to cache before), so the ~4,200-token prefix reads at one-tenth input price. Verified live: cache write/read confirmed via usage fields; 3-job batch scored end-to-end.
