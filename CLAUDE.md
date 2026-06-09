@@ -86,5 +86,5 @@ Adding a new secret: add to `.env.example` → `config/settings.py` → this tab
 | Score ≥ 75 | Apply queue (capped at 20/day) — one-click manual apply or skip from dashboard |
 | Score < 75 | Archived |
 | Queue expiry | Jobs in apply queue auto-archived after 30 days |
-| Visa filter | Skip only if JD explicitly rejects sponsorship |
+| Visa filter | Skip if JD explicitly rejects sponsorship, requires US citizenship, or requires a security clearance |
 | Hard excluded company | Infosys / Infosys Limited |

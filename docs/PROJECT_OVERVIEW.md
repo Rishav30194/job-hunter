@@ -19,7 +19,7 @@ beyond the apply button itself.
 | Minimal human time | Apply Queue shows only scored ≥75 jobs; one click to open and apply |
 | Maximum coverage | 8 search terms × Indeed + JSearch (Google for Jobs) per run |
 | Accurate scoring | Claude Haiku scores fit (not desirability) — tier and salary are neutral |
-| Visa safety | Explicit "no sponsorship" phrases → auto-discard, persisted to DB |
+| Visa safety | "No sponsorship" / US-citizenship / security-clearance phrases → auto-discard, persisted to DB |
 | No repeat rejections | 90-day cooldown on companies that rejected you |
 | Inbox awareness | Gmail monitor classifies replies, updates funnel, alerts on action items |
 | Full visibility | Streamlit dashboard with funnel metrics, notes, status updates |
