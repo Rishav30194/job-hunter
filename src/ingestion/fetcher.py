@@ -68,6 +68,13 @@ VISA_REJECTION_PHRASES: list[str] = [
     "must be authorized to work in the u",  # covers "US", "USA", "United States"
     "must be legally authorized",
     "no visa",
+    # Citizenship / clearance mandates — never phrased as a sponsorship
+    # rejection, but equally disqualifying for a candidate needing sponsorship.
+    "us citizen",  # covers "us citizens", "us citizenship"
+    "u.s. citizen",
+    "united states citizen",
+    "security clearance",
+    "ts/sci",
 ]
 
 

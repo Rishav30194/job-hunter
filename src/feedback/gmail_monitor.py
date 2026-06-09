@@ -256,17 +256,19 @@ def _star_message(service, msg_id: str) -> None:
 def _find_matching_jobs(company: str, title: str) -> list[Job]:
     """Return applied/phone_screen/interview jobs that match company and title.
 
-    Uses starts-with ILIKE on company (not contains) to reduce false matches from
-    newsletter mentions of company names. Returns empty list on DB unavailability.
+    Uses contains ILIKE on company so legal-name variants still match (email says
+    "Cigna", DB stores "The Cigna Group"). False-positive risk is low: the search
+    space is only active applications, and auto-updates additionally require a
+    title match plus high classifier confidence. Returns empty list on DB
+    unavailability.
     """
     if not company:
         return []
     try:
         with get_session() as session:
-            # starts-with is less likely than contains to match unrelated newsletters
             q = session.query(Job).filter(
                 Job.status.in_(["applied", "phone_screen", "interview"]),
-                Job.company.ilike(f"{company}%"),
+                Job.company.ilike(f"%{company}%"),
             )
             if title:
                 q = q.filter(Job.title.ilike(f"%{title}%"))
