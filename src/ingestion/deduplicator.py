@@ -42,13 +42,17 @@ def compute_hash(company: str, title: str, location: str | None) -> str:
 
 
 def _get_rejected_companies(session: Session) -> set[str]:
-    """Return lowercase company names rejected within the last 90 days."""
+    """Return lowercase company names rejected within the last 90 days.
+
+    Measured from updated_at (when the rejection was recorded), not applied_at —
+    an application submitted months ago but rejected yesterday must still cool down.
+    """
     cutoff = datetime.now(timezone.utc) - timedelta(days=90)
     rows = session.scalars(
         select(Job.company)
         .join(Application, Application.job_id == Job.id)
         .where(Application.status == "rejected")
-        .where(Application.applied_at > cutoff)
+        .where(Application.updated_at > cutoff)
         .distinct()
     ).all()
     return {c.lower() for c in rows if c}

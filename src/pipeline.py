@@ -47,21 +47,26 @@ def run_pipeline() -> None:
         logger.exception("Queue expiry step failed")
 
     try:
+        # Sessions are scoped tightly around DB work. Fetching and especially
+        # batch scoring can take a long time (scoring waits on a Message Batch,
+        # up to 2h) — holding one transaction across that wait means a single
+        # connection drop discards already-paid scoring results.
+        jobs = fetch_jobs()
+        run_stats["jobs_fetched"] = len(jobs)
+
         with get_session() as session:
-            jobs = fetch_jobs()
-            run_stats["jobs_fetched"] = len(jobs)
-
             new_jobs = filter_new(jobs, session)
-            run_stats["jobs_new"] = len(new_jobs)
+        run_stats["jobs_new"] = len(new_jobs)
 
-            if not new_jobs:
-                logger.info("No new jobs this run — skipping score/route/persist")
-            else:
-                scored = score_jobs(new_jobs)
-                run_stats["jobs_scored"] = sum(
-                    1 for j in scored if j.get("score") is not None
-                )
+        if not new_jobs:
+            logger.info("No new jobs this run — skipping score/route/persist")
+        else:
+            scored = score_jobs(new_jobs)
+            run_stats["jobs_scored"] = sum(
+                1 for j in scored if j.get("score") is not None
+            )
 
+            with get_session() as session:
                 buckets = route_jobs(scored, session)
                 run_stats["queued"] = len(buckets["queued_apply"])
                 run_stats["archived"] = len(buckets["archived"])

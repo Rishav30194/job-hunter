@@ -65,6 +65,12 @@ HARD_EXCLUDED: frozenset[str] = frozenset({
     "Infosys", "Infosys Limited",
 })
 
+# First word of each excluded company, lowercased — matching the raw scraped
+# name exactly is too brittle for a never-apply rule ("INFOSYS", "Infosys Ltd").
+_EXCLUDED_FIRST_WORDS: frozenset[str] = frozenset(
+    name.split()[0].lower() for name in HARD_EXCLUDED
+)
+
 ALL_TIERS: frozenset[str] = TIER_1 | TIER_2 | TIER_3
 
 
@@ -83,5 +89,10 @@ def get_tier(company: str) -> int | None:
 
 
 def is_excluded(company: str) -> bool:
-    """Return True if the company is hard-excluded and must never be applied to."""
-    return company in HARD_EXCLUDED
+    """Return True if the company is hard-excluded and must never be applied to.
+
+    Matches on the first word, case-insensitively, so "INFOSYS", "Infosys Ltd",
+    and "Infosys BPM" are all caught.
+    """
+    words = (company or "").strip().lower().split()
+    return bool(words) and words[0] in _EXCLUDED_FIRST_WORDS

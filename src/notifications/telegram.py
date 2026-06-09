@@ -50,6 +50,9 @@ def send_high_match_alert(jobs: list[dict]) -> None:
     top = sorted(jobs, key=lambda j: j.get("score") or 0, reverse=True)[:_MAX_HIGH_MATCH]
     count = len(top)
     lines = [f"<b>{count} High-Match Job{'s' if count != 1 else ''} — Apply Queue</b>"]
+    # Stay under Telegram's 4,096-char limit with headroom — blind truncation in
+    # send_message can cut an open HTML tag and the API rejects the whole message.
+    budget = _MAX_MESSAGE_LEN - 200
 
     for i, job in enumerate(top, 1):
         title = _e(job.get("title") or "Unknown")
@@ -68,7 +71,12 @@ def send_high_match_alert(jobs: list[dict]) -> None:
             parts.append(f'   <a href="{_e(url)}">View Job</a>')
         if reasoning:
             parts.append(f"   <i>{reasoning}</i>")
-        lines.append("\n".join(parts))
+        entry = "\n".join(parts)
+
+        if sum(len(line) for line in lines) + len(entry) > budget:
+            lines.append(f"\n…and {count - i + 1} more in the dashboard.")
+            break
+        lines.append(entry)
 
     send_message("\n".join(lines))
 
@@ -104,6 +112,8 @@ def send_run_summary(stats: dict) -> None:
         ),
     ]
     if stats.get("error"):
-        lines.append(f"\nError: {stats['error']}")
+        # Tracebacks contain "<module>"/"<string>" — unescaped they make Telegram
+        # reject the whole message with 400, silently losing the error alert.
+        lines.append(f"\nError: {_e(stats['error'])}")
 
     send_message("\n".join(lines))

@@ -112,7 +112,7 @@ git clone https://github.com/Rishav30194/job-hunter /opt/job-hunter
 cd /opt/job-hunter
 cp .env.example .env                         # fill values
 docker compose up -d --build
-docker compose exec scheduler alembic upgrade head
+# Schema is created automatically on scheduler startup — no migration step.
 
 # Nginx + SSL
 cp deploy/nginx.conf /etc/nginx/sites-available/job-hunter

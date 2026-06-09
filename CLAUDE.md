@@ -13,7 +13,7 @@ cp .env.example .env                     # fill in all required values
 python3.12 -m venv venv
 venv/bin/pip install -r requirements.txt
 docker compose up -d postgres redis
-venv/bin/alembic upgrade head
+# Schema is created automatically on startup (init_db / create_all) — no migration step.
 
 venv/bin/python -m src.main              # scheduler — runs every 6h
 PYTHONPATH=. venv/bin/streamlit run dashboard/app.py  # dashboard on :8501
