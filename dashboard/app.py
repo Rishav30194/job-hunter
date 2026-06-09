@@ -22,7 +22,8 @@ def _query_metrics() -> dict:
     from datetime import timedelta, timezone as _tz
     now = datetime.now(_tz.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = now - timedelta(days=7)
+    # Week-to-date: resets every Monday 00:00 UTC (ISO week), not a rolling 7 days.
+    week_start = today_start - timedelta(days=today_start.weekday())
 
     with get_session() as session:
         to_apply = session.scalar(
@@ -215,7 +216,7 @@ c1.metric("To Apply (≥75)", metrics["to_apply"])
 c2.metric("High Match (≥85)", metrics["high_match"])
 c3.metric("Applied", metrics["applied"])
 c4.metric("Applied Today", metrics["applied_today"])
-c5.metric("Applied (7d)", metrics["applied_week"])
+c5.metric("Applied This Week", metrics["applied_week"])
 c6.metric("Interviews", metrics["interviews"])
 
 st.divider()
