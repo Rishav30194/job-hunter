@@ -93,11 +93,12 @@ def check_gmail() -> dict:
 
     try:
         service = _build_service()
-    except Exception:
-        logger.exception("Gmail API auth failed")
+        message_ids = _fetch_unread_ids(service)
+    except Exception as exc:
+        # Auth failures (expired/revoked refresh token) previously died silently —
+        # email monitoring would stop and nothing would tell the user.
+        _alert_gmail_failure(exc)
         return stats
-
-    message_ids = _fetch_unread_ids(service)
     if not message_ids:
         logger.info("Gmail: no unread messages in window")
         return stats
@@ -116,6 +117,25 @@ def check_gmail() -> dict:
         stats["processed"], stats["confirmations"], stats["rejections"], stats["action_items"], stats["errors"],
     )
     return stats
+
+
+def _alert_gmail_failure(exc: Exception) -> None:
+    """Log a Gmail failure; send a Telegram alert when it is an auth problem.
+
+    Transient network errors are logged only — the next 6-hour cycle retries.
+    Auth errors (expired or revoked refresh token) do not heal on their own,
+    so they alert on every failing run until the token is fixed.
+    """
+    logger.exception("Gmail check failed")
+    from google.auth.exceptions import RefreshError
+
+    if isinstance(exc, RefreshError) or "invalid_grant" in str(exc).lower():
+        send_message(
+            "⚠️ <b>Gmail monitoring is down — auth token expired or revoked</b>\n\n"
+            "Rejections and recruiter replies are NOT being tracked.\n"
+            "Fix: re-run <code>PYTHONPATH=. venv/bin/python src/feedback/setup_gmail.py</code> "
+            "locally, then update GOOGLE_REFRESH_TOKEN in the VPS .env and restart the scheduler."
+        )
 
 
 def _build_service():

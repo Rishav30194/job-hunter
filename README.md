@@ -17,7 +17,7 @@ Every 6 hours
   │           Tag "no sponsorship" / citizenship / clearance listings as visa_disqualified
   │
   ├── Dedup   SHA-256(company + title + location) vs PostgreSQL
-  │           Skip companies rejected within 90 days (cooldown)
+  │           Cooldown: skip companies with 4+ rejections in 30 days (tier-1/2 exempt)
   │
   ├── Score   Claude Haiku scores each job 0–100 against your resume
   │           (Message Batch API at 50% token price, cached system prompt)
@@ -114,6 +114,10 @@ cp .env.example .env                         # fill values
 docker compose up -d --build
 # Schema is created automatically on scheduler startup — no migration step.
 
+# Nightly DB backup (03:00 UTC, gzip pg_dump, 14-day retention)
+chmod +x deploy/backup.sh
+( crontab -l 2>/dev/null; echo "0 3 * * * /opt/job-hunter/deploy/backup.sh >> /var/log/jobhunter-backup.log 2>&1" ) | crontab -
+
 # Nginx + SSL
 cp deploy/nginx.conf /etc/nginx/sites-available/job-hunter
 ln -s /etc/nginx/sites-available/job-hunter /etc/nginx/sites-enabled/
@@ -145,7 +149,7 @@ Every pipeline run polls unread emails from the last 48 hours. Claude Haiku clas
 
 - `confirmation` — application acknowledged, no action needed
 - `recruiter_reply` / `assessment` — advances job to **phone_screen**, stars the email, sends Telegram alert
-- `rejection` — advances job to **rejected**, feeds 90-day company cooldown
+- `rejection` — advances job to **rejected**, feeds the company rejection cooldown
 - `unimportant` — marked read, no DB update
 
 Auto-updates require `confident=True` AND both company and job title extracted — prevents newsletters from mutating live application status.
@@ -161,5 +165,5 @@ Auto-updates require `confident=True` AND both company and job title extracted �
 | Apply queue threshold | Score ≥ 75 |
 | Daily apply cap | 20 jobs |
 | Queue expiry | 30 days (auto-archived) |
-| Rejection cooldown | 90 days |
+| Rejection cooldown | 30 days, after 4+ rejections; tier-1/2 companies exempt |
 | Hard excluded company | Infosys / Infosys Limited |
