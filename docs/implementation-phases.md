@@ -535,6 +535,17 @@ curl http://localhost:8501                 # dashboard responds 200
 | 11 | Rejection Cooldown (DB-based) | ✅ Complete |
 | 12 | VPS Deployment (jobhunter.mooo.com) | ✅ Complete |
 
+## Open Action Items (next session)
+
+1. **Gmail — make the refresh token permanent (free).** Google Cloud Console →
+   APIs & Services → OAuth consent screen → **Publish App** (unverified is fine for
+   personal use). Then re-run `PYTHONPATH=. venv/bin/python src/feedback/setup_gmail.py`
+   locally, copy the new `GOOGLE_REFRESH_TOKEN` into the VPS `.env`, restart the
+   scheduler. Until then the token expires ~weekly (Testing-mode limit); the
+   Telegram auth-failure alert will fire when it does.
+2. **Backups — Q&A.** Walk through restore procedure, off-site automation options,
+   and retention for `deploy/backup.sh` before changing anything.
+
 ## Post-Launch Improvements (2026-06-09)
 
 - **Visa filter hardened** — citizenship / security-clearance / TS-SCI phrases now pre-disqualify in `fetcher.py` (full-text scan, no API cost) and in the scoring rubric. Previously only explicit "no sponsorship" wording was caught; a Workday US-Federal job slipped through.
