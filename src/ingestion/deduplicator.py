@@ -4,9 +4,11 @@ import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from config.settings import settings
+from data.companies import get_tier
 from src.db.models import Application, Job
 
 logger = logging.getLogger(__name__)
@@ -42,20 +44,28 @@ def compute_hash(company: str, title: str, location: str | None) -> str:
 
 
 def _get_rejected_companies(session: Session) -> set[str]:
-    """Return lowercase company names rejected within the last 90 days.
+    """Return lowercase company names under rejection cooldown.
 
-    Measured from updated_at (when the rejection was recorded), not applied_at —
-    an application submitted months ago but rejected yesterday must still cool down.
+    A company cools down only after cooldown_min_rejections rejections recorded
+    (Application.updated_at, not applied_at) within the last cooldown_days.
+    Tier-1/2 companies are always exempt — one team's rejection at a large bank
+    says nothing about a different team's opening. Tier matching is exact-name
+    against data/companies.py.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
-    rows = session.scalars(
-        select(Job.company)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.cooldown_days)
+    rows = session.execute(
+        select(Job.company, func.count(Application.id))
         .join(Application, Application.job_id == Job.id)
         .where(Application.status == "rejected")
         .where(Application.updated_at > cutoff)
-        .distinct()
+        .group_by(Job.company)
+        .having(func.count(Application.id) >= settings.cooldown_min_rejections)
     ).all()
-    return {c.lower() for c in rows if c}
+    return {
+        company.lower()
+        for company, _count in rows
+        if company and get_tier(company) not in (1, 2)
+    }
 
 
 def filter_new(jobs: list[dict], session: Session) -> list[dict]:
@@ -68,12 +78,15 @@ def filter_new(jobs: list[dict], session: Session) -> list[dict]:
     if not jobs:
         return []
 
-    # Rejection cooldown — skip companies rejected within the last 90 days
+    # Rejection cooldown — see _get_rejected_companies for the rules
     rejected = _get_rejected_companies(session)
     if rejected:
         before = len(jobs)
         jobs = [j for j in jobs if (j.get("company") or "").strip().lower() not in rejected]
-        logger.info("Cooldown: %d jobs filtered (rejected within 90 days)", before - len(jobs))
+        logger.info(
+            "Cooldown: %d jobs filtered (%d+ rejections within %d days)",
+            before - len(jobs), settings.cooldown_min_rejections, settings.cooldown_days,
+        )
 
     # Compute hashes and deduplicate within the batch
     seen: dict[str, dict] = {}

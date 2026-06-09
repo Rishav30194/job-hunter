@@ -22,7 +22,7 @@
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                    DEDUPLICATION LAYER                             │   │
 │  │  SHA-256 hash(company + title + normalised_location) vs Postgres  │   │
-│  │  Rejection cooldown: skip companies rejected within 90 days       │   │
+│  │  Rejection cooldown: 4+ rejections in 30 days (tier-1/2 exempt)   │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
@@ -86,7 +86,7 @@ Visa-rejected jobs (explicit "no sponsorship" phrases, US-citizenship mandates, 
 ### `src/ingestion/deduplicator.py`
 SHA-256 hash dedup against Postgres using `company + title + normalised_location`.
 Location is normalised to city-only before hashing (`"New York, NY"` → `"new york"`) so the same job from Indeed and JSearch deduplicates correctly.
-Also queries `applications` for companies rejected within 90 days and drops their jobs before scoring (rejection cooldown).
+Also applies the rejection cooldown before scoring: companies with `cooldown_min_rejections` (default 4) rejections recorded in the last `cooldown_days` (default 30) are dropped; tier-1/2 companies are always exempt.
 
 ### `data/companies.py`
 Three-tier company list sourced from MyVisaJobs FY2025 H1B LCA data. Tier labels are passed to the scorer as context but do **not** affect the score — company tier reflects selectivity, not candidate fit. Hard-excluded set contains only Infosys / Infosys Limited.

@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     job_max_age_hours: int = 48
     zero_result_alert_threshold: int = 3
 
+    cooldown_days: int = 30            # how long a rejecting company is skipped
+    cooldown_min_rejections: int = 4   # rejections required before cooldown kicks in
+                                       # (tier-1/2 companies are always exempt)
+
     min_salary: int = 100_000
 
 

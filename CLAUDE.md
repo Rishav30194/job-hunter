@@ -87,4 +87,5 @@ Adding a new secret: add to `.env.example` → `config/settings.py` → this tab
 | Score < 75 | Archived |
 | Queue expiry | Jobs in apply queue auto-archived after 30 days |
 | Visa filter | Skip if JD explicitly rejects sponsorship, requires US citizenship, or requires a security clearance |
+| Rejection cooldown | 30 days, only after 4+ rejections from a company; tier-1/2 companies exempt |
 | Hard excluded company | Infosys / Infosys Limited |

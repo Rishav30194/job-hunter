@@ -20,7 +20,7 @@ beyond the apply button itself.
 | Maximum coverage | 8 search terms × Indeed + JSearch (Google for Jobs) per run |
 | Accurate scoring | Claude Haiku scores fit (not desirability) — tier and salary are neutral |
 | Visa safety | "No sponsorship" / US-citizenship / security-clearance phrases → auto-discard, persisted to DB |
-| No repeat rejections | 90-day cooldown on companies that rejected you |
+| No repeat rejections | 30-day cooldown after 4+ rejections from a company (tier-1/2 exempt) |
 | Inbox awareness | Gmail monitor classifies replies, updates funnel, alerts on action items |
 | Full visibility | Streamlit dashboard with funnel metrics, notes, status updates |
 
@@ -66,7 +66,7 @@ beyond the apply button itself.
 | Fetching jobs every 6h | ✅ Fully |
 | Deduplication | ✅ Fully |
 | Visa sponsorship check | ✅ Fully |
-| Rejection cooldown (90 days) | ✅ Fully |
+| Rejection cooldown (30 days / 4+ rejections / tier-1-2 exempt) | ✅ Fully |
 | AI scoring (0–100) | ✅ Fully |
 | Telegram alerts (high match + run summary + daily digest) | ✅ Fully |
 | Gmail inbox monitoring (classify replies, update status) | ✅ Fully |
