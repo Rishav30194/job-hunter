@@ -22,8 +22,8 @@ def _query_metrics() -> dict:
     from datetime import timedelta, timezone as _tz
     now = datetime.now(_tz.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    # Week-to-date: resets every Monday 00:00 UTC (ISO week), not a rolling 7 days.
-    week_start = today_start - timedelta(days=today_start.weekday())
+    # Week-to-date: resets every Sunday 00:00 UTC (US calendar week).
+    week_start = today_start - timedelta(days=(today_start.weekday() + 1) % 7)
 
     with get_session() as session:
         to_apply = session.scalar(
