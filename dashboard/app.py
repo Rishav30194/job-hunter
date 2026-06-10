@@ -18,12 +18,23 @@ st.title("Job Hunter Dashboard")
 # ---------------------------------------------------------------------------
 
 def _query_metrics() -> dict:
-    """Counts for the top metrics row. All date boundaries are UTC, matching storage."""
+    """Counts for the top metrics row.
+
+    Day/week boundaries are US Eastern — the user's day, not UTC's. Timestamps
+    are stored as naive UTC, so boundaries are converted to naive UTC before
+    comparison. (UTC boundaries made evening applications roll into "tomorrow"
+    at 8 PM Eastern.)
+    """
     from datetime import timedelta, timezone as _tz
-    now = datetime.now(_tz.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    # Week-to-date: resets every Sunday 00:00 UTC (US calendar week).
-    week_start = today_start - timedelta(days=(today_start.weekday() + 1) % 7)
+    from zoneinfo import ZoneInfo
+
+    now_local = datetime.now(ZoneInfo("America/New_York"))
+    today_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Week-to-date: resets Sunday 00:00 Eastern (US calendar week).
+    week_local = today_local - timedelta(days=(today_local.weekday() + 1) % 7)
+
+    today_start = today_local.astimezone(_tz.utc).replace(tzinfo=None)
+    week_start = week_local.astimezone(_tz.utc).replace(tzinfo=None)
 
     with get_session() as session:
         to_apply = session.scalar(
