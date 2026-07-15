@@ -87,6 +87,31 @@ def score_jobs(jobs: list[dict]) -> list[dict]:
     return results
 
 
+def _prewarm_cache() -> None:
+    """Write the system-prompt cache once so batch entries read instead of re-writing it.
+
+    Parallel batch requests each pay a cache write for the ~4.2K-token system
+    prompt because none can read an entry another is still writing. One
+    max_tokens=0 request (documented pre-warm pattern: no output billed, cache
+    write charged) populates the tools→system cache before submission, so
+    entries starting within the 5-minute TTL read instead. The pre-warm omits
+    tool_choice — max_tokens=0 is rejected with forced tool_choice, and
+    tool_choice only affects the messages cache tier, not the tools+system
+    tier where our breakpoint lives. Best-effort: a failure must never block
+    batch submission.
+    """
+    try:
+        _client.messages.create(
+            model=_MODEL,
+            max_tokens=0,
+            system=_SYSTEM_CONTENT,
+            tools=[SCORING_TOOL],
+            messages=[{"role": "user", "content": "warmup"}],
+        )
+    except Exception:
+        logger.warning("Cache pre-warm failed — batch will pay cache writes", exc_info=True)
+
+
 def _score_batch(jobs_by_index: dict[int, dict]) -> dict[int, dict]:
     """Submit eligible jobs as one Message Batch and return scoring fields by index.
 
@@ -94,6 +119,7 @@ def _score_batch(jobs_by_index: dict[int, dict]) -> dict[int, dict]:
     the caller rescores those sequentially. Raises if the batch as a whole cannot
     be created, polled, or completed within the timeout.
     """
+    _prewarm_cache()
     requests = [
         {"custom_id": f"job-{i}", "params": _request_params(job)}
         for i, job in jobs_by_index.items()
