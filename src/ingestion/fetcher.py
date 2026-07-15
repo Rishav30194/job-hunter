@@ -55,6 +55,16 @@ EXCLUDED_TITLE_KEYWORDS: list[str] = [
 ]
 
 # Job descriptions containing any of these phrases are visa-disqualified.
+# Only UNAMBIGUOUS rejections belong here. Ambiguous phrases were removed on
+# purpose (verified false positives in production, 2026-07-08) — do NOT re-add:
+#   - "us citizen" / "u.s. citizen" / "united states citizen": match E-Verify
+#     compliance boilerplate ("…U.S. Citizenship and Immigration Services")
+#     present in postings from large compliant employers (47 good jobs killed).
+#   - "must be authorized to work in the u" / "must be legally authorized":
+#     an H1B holder IS authorized — only a rejection when paired with
+#     "without sponsorship", which is already listed. (16 good jobs killed.)
+# Descriptions with those phrases fall through to LLM scoring, whose rubric
+# (prompts.py section 6) handles the nuance.
 VISA_REJECTION_PHRASES: list[str] = [
     "will not sponsor",
     "no sponsorship",
@@ -65,14 +75,15 @@ VISA_REJECTION_PHRASES: list[str] = [
     "sponsorship is not available",
     "sponsorship not available",
     "sponsorship not provided",
-    "must be authorized to work in the u",  # covers "US", "USA", "United States"
-    "must be legally authorized",
     "no visa",
     # Citizenship / clearance mandates — never phrased as a sponsorship
     # rejection, but equally disqualifying for a candidate needing sponsorship.
-    "us citizen",  # covers "us citizens", "us citizenship"
-    "u.s. citizen",
-    "united states citizen",
+    "must be a us citizen",
+    "must be a u.s. citizen",
+    "must be a united states citizen",
+    "citizens only",
+    "citizenship required",
+    "citizenship is required",
     "security clearance",
     "ts/sci",
 ]
