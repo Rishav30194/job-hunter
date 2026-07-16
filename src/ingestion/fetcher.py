@@ -9,6 +9,7 @@ from jobspy import scrape_jobs
 
 from config.settings import settings
 from data.companies import is_excluded
+from src.ingestion.ats_boards import ATS_SOURCES, fetch_ats_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,19 @@ def fetch_jobs() -> list[dict]:
     seen_urls.update(j["url"] for j in fresh_jsearch if j["url"])
     all_jobs.extend(fresh_jsearch)
     logger.info("JSearch: %d raw → %d after filters", len(jsearch_jobs), len(fresh_jsearch))
+
+    # ATS boards (Greenhouse/Lever/Ashby) — direct polling of target companies.
+    # Exempt from the age filter inside _apply_filters (postings stay open for
+    # weeks); dedup by content hash keeps each from being scored twice.
+    try:
+        ats_jobs = _apply_filters(fetch_ats_jobs())
+    except Exception:
+        logger.exception("ATS board fetch failed")
+        ats_jobs = []
+    fresh_ats = [j for j in ats_jobs if j["url"] not in seen_urls]
+    seen_urls.update(j["url"] for j in fresh_ats if j["url"])
+    all_jobs.extend(fresh_ats)
+    logger.info("ATS boards: %d relevant → %d after filters", len(ats_jobs), len(fresh_ats))
 
     logger.info("Total fetched: %d jobs", len(all_jobs))
     return all_jobs
@@ -301,8 +315,11 @@ def _apply_filters(jobs: list[dict]) -> list[dict]:
     results = []
 
     for job in jobs:
-        # Age filter — skip only if date is present AND too old
-        if job["posted_at"] and job["posted_at"].date() < cutoff:
+        # Age filter — skip only if date is present AND too old. ATS-board
+        # postings are exempt: they stay open (and valid) for weeks, and the
+        # content hash guarantees each is only scored once.
+        if job["posted_at"] and job["posted_at"].date() < cutoff \
+                and job.get("source") not in ATS_SOURCES:
             continue
 
         # Salary filter — skip only if salary is present AND below threshold
