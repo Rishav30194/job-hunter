@@ -576,3 +576,12 @@ Per `docs/cost-optimization-plan-2026-07-07.md` (branch `chore/api-cost-round2`)
 - **Scoring cache pre-warm (~$2–3/mo)** — one `max_tokens=0` request writes the tools+system cache before each batch submit, so parallel batch entries read (~0.1×) instead of each re-writing the ~4,200-token prefix (was 44% of batch cost). Verified live: pre-warm wrote 4,203 cache tokens, 0 output.
 - **Shorter scoring reasoning (~$1–2/mo)** — rubric and tool description now ask for 1–2 short sentences instead of 2–3. Cached prefix re-measured at 4,203 tokens — still above Haiku's 4,096 cache minimum.
 - Batch-timeout partial-result salvage (plan Change 4) deliberately skipped — rare event (1 in 14 days), pennies.
+
+## Post-Launch Improvements — Credit Guard & Gmail Batching (2026-07-16)
+
+Branch `fix/credit-guard-and-gmail-batching`, motivated by the 2026-07-16 credit-exhaustion incident (612-request batch errored 100%, the sequential fallback churned doomed retries, and unscored jobs would have been persisted → archived → permanently lost to dedup; the scheduler had to be stopped manually).
+
+- **Credit guard** — `src/anthropic_guard.py` detects the "credit balance is too low" error. Scoring aborts immediately on it (batch and sequential paths), keeps whatever the batch scored before credits ran out, sends one Telegram alert with fix instructions, and marks affected jobs score=None. Tenacity no longer retries billing errors.
+- **Unscored jobs are never persisted** — `run_pipeline` drops score=None jobs before routing/persist so the next cycle re-fetches and scores them. This also fixes a pre-existing silent-loss bug for any permanently failed scoring.
+- **Gmail batch classification (~$1–1.5/mo)** — emails are classified in one Message Batch (50% token price) after the noise/empty gather phase; per-email sequential fallback for batch misses; on credit exhaustion emails stay unread and retry next cycle.
+- 8 new tests (45 total).
