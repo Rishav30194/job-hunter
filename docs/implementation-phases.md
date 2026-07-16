@@ -554,3 +554,12 @@ curl http://localhost:8501                 # dashboard responds 200
 - **Rejection cooldown retuned** — 90 days/any rejection → 30 days only after 4+ rejections from a company (`cooldown_days` / `cooldown_min_rejections` in settings); tier-1/2 companies always exempt.
 - **Nightly DB backups** — `deploy/backup.sh` via VPS host cron (03:00 UTC, gzip pg_dump, integrity-checked, 14-day retention in /root/backups/job-hunter).
 - **Cost optimization (~$40/mo → ~$8–15/mo API spend)** — scoring moved to the Message Batches API (50% token price, sequential fallback on failure), and the scoring system prompt was expanded past Haiku 4.5's 4,096-token cache minimum (it silently failed to cache before), so the ~4,200-token prefix reads at one-tenth input price. Verified live: cache write/read confirmed via usage fields; 3-job batch scored end-to-end.
+
+## Post-Launch Improvements — API Cost Round 2 (2026-07-15)
+
+Per `docs/cost-optimization-plan-2026-07-07.md` (branch `chore/api-cost-round2`):
+
+- **Gmail noise-sender skip list (~$3/mo)** — known job-alert/marketing senders (11 domains + `jobalerts-noreply@linkedin.com`, mined from 14 days of production classification logs) are marked read without Claude classification. ATS domains (greenhouse, myworkday, icims, ashby, lever…) deliberately excluded — they also deliver rejections and assessments. New `skipped_noise` counter in the Gmail stats log line.
+- **Scoring cache pre-warm (~$2–3/mo)** — one `max_tokens=0` request writes the tools+system cache before each batch submit, so parallel batch entries read (~0.1×) instead of each re-writing the ~4,200-token prefix (was 44% of batch cost). Verified live: pre-warm wrote 4,203 cache tokens, 0 output.
+- **Shorter scoring reasoning (~$1–2/mo)** — rubric and tool description now ask for 1–2 short sentences instead of 2–3. Cached prefix re-measured at 4,203 tokens — still above Haiku's 4,096 cache minimum.
+- Batch-timeout partial-result salvage (plan Change 4) deliberately skipped — rare event (1 in 14 days), pennies.

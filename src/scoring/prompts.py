@@ -164,7 +164,7 @@ CONSISTENCY RULES
   impressions of it.
 - Use the full 0–100 range in increments of 1. Do not cluster on multiples of 5.
 - The reasoning must cite the specific factors that drove the score: the stack match,
-  the stated years requirement, and the domain — in one to three sentences.
+  the stated years requirement, and the domain — in one or two short sentences.
 """
 
 # ---------------------------------------------------------------------------
@@ -282,7 +282,7 @@ SCORING_TOOL: dict = {
             "reasoning": {
                 "type": "string",
                 "description": (
-                    "2–3 sentences: what matched, what did not, "
+                    "1–2 short sentences: what matched, what did not, "
                     "the single factor that drove the score."
                 ),
             },
