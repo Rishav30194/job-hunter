@@ -567,3 +567,12 @@ Per `docs/improvement-plan-2026-07-07.md` (branch `fix/visa-prefilter-and-improv
 - **Redis removed** (approved) — service, depends_on, `redis_url`, `REDIS_URL`, and the `redis` package dropped; nothing ever used it. `extra="ignore"` in settings means a stale REDIS_URL in the VPS .env is harmless.
 - **Dead auto-apply remnants deleted** (approved) — `src/apply/` (referenced a module that no longer exists) and local `data/indeed_session.json`. The VPS copy of `data/indeed_session.json` should be removed on next deploy.
 - Deferred: jobspy/Google retry (Change 6) — only if ATS coverage feels thin after a couple of weeks.
+
+## Post-Launch Improvements — API Cost Round 2 (2026-07-15)
+
+Per `docs/cost-optimization-plan-2026-07-07.md` (branch `chore/api-cost-round2`):
+
+- **Gmail noise-sender skip list (~$3/mo)** — known job-alert/marketing senders (11 domains + `jobalerts-noreply@linkedin.com`, mined from 14 days of production classification logs) are marked read without Claude classification. ATS domains (greenhouse, myworkday, icims, ashby, lever…) deliberately excluded — they also deliver rejections and assessments. New `skipped_noise` counter in the Gmail stats log line.
+- **Scoring cache pre-warm (~$2–3/mo)** — one `max_tokens=0` request writes the tools+system cache before each batch submit, so parallel batch entries read (~0.1×) instead of each re-writing the ~4,200-token prefix (was 44% of batch cost). Verified live: pre-warm wrote 4,203 cache tokens, 0 output.
+- **Shorter scoring reasoning (~$1–2/mo)** — rubric and tool description now ask for 1–2 short sentences instead of 2–3. Cached prefix re-measured at 4,203 tokens — still above Haiku's 4,096 cache minimum.
+- Batch-timeout partial-result salvage (plan Change 4) deliberately skipped — rare event (1 in 14 days), pennies.

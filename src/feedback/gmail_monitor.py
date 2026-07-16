@@ -29,6 +29,41 @@ logger = logging.getLogger(__name__)
 
 _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
+# Senders that are always job-alert/marketing noise — marked read without
+# Claude classification. Built from 14 days of production classification logs
+# (2026-07, every listed sender 100% 'unimportant'). ATS domains (greenhouse,
+# myworkday, icims, ashbyhq, lever, smartrecruiters, workable…) must NEVER
+# appear here: they also deliver rejections and assessments.
+_NOISE_DOMAINS: frozenset[str] = frozenset({
+    "my.theladders.com",
+    "jobright.ai",
+    "efinancialcareers.com",
+    "connect.dice.com",
+    "glassdoor.com",
+    "match.indeed.com",
+    "ziprecruiter.com",
+    "em.walmart.com",
+    "lensa.com",
+    "builtin.com",
+    "mail.remotehunter.com",
+})
+# Exact addresses for mixed-traffic domains. linkedin.com sends alerts AND
+# application confirmations (jobs-noreply@) AND InMail recruiter replies
+# (messages-noreply@) from the same domain — only the alert address is noise.
+_NOISE_ADDRESSES: frozenset[str] = frozenset({
+    "jobalerts-noreply@linkedin.com",
+})
+
+
+def _is_noise_sender(sender: str) -> bool:
+    """Return True when the From address is a known job-alert/marketing sender."""
+    match = re.search(r"[\w.+-]+@[\w.-]+", sender or "")
+    if not match:
+        return False
+    addr = match.group(0).lower()
+    domain = addr.split("@", 1)[1]
+    return addr in _NOISE_ADDRESSES or domain in _NOISE_DOMAINS
+
 _CLASSIFICATION_TOOL: dict = {
     "name": "classify_email",
     "description": "Classify a job-related email and extract company/role information.",
@@ -89,7 +124,10 @@ Rules:
 
 def check_gmail() -> dict:
     """Fetch unread job emails, classify, update DB, and alert. Returns a stats dict."""
-    stats = {"processed": 0, "confirmations": 0, "rejections": 0, "action_items": 0, "errors": 0}
+    stats = {
+        "processed": 0, "confirmations": 0, "rejections": 0,
+        "action_items": 0, "skipped_noise": 0, "errors": 0,
+    }
 
     try:
         service = _build_service()
@@ -113,8 +151,10 @@ def check_gmail() -> dict:
             stats["errors"] += 1
 
     logger.info(
-        "Gmail check complete: %d processed, %d confirmations, %d rejections, %d action items, %d errors",
-        stats["processed"], stats["confirmations"], stats["rejections"], stats["action_items"], stats["errors"],
+        "Gmail check complete: %d processed, %d confirmations, %d rejections, "
+        "%d action items, %d skipped_noise, %d errors",
+        stats["processed"], stats["confirmations"], stats["rejections"],
+        stats["action_items"], stats["skipped_noise"], stats["errors"],
     )
     return stats
 
@@ -325,6 +365,11 @@ def _process_message(service, msg_id: str, stats: dict) -> None:
     subject, sender, body = _get_email_text(service, msg_id)
     if not body and not subject:
         _mark_read(service, msg_id)
+        return
+
+    if _is_noise_sender(sender):
+        _mark_read(service, msg_id)
+        stats["skipped_noise"] += 1
         return
 
     classification = _classify_email(subject, sender, body)
