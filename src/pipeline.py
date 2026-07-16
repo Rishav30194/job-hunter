@@ -66,6 +66,18 @@ def run_pipeline() -> None:
                 1 for j in scored if j.get("score") is not None
             )
 
+            # Unscored jobs (credit exhaustion, permanent API failures) must
+            # NOT be persisted: dedup would skip them on every future run and
+            # they would never get scored. Dropping them here means the next
+            # cycle re-fetches and scores them fresh.
+            unscored = [j for j in scored if j.get("score") is None]
+            if unscored:
+                logger.warning(
+                    "%d unscored jobs not persisted — they will be re-fetched next run",
+                    len(unscored),
+                )
+                scored = [j for j in scored if j.get("score") is not None]
+
             with get_session() as session:
                 buckets = route_jobs(scored, session)
                 run_stats["queued"] = len(buckets["queued_apply"])
