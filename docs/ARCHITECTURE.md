@@ -15,6 +15,7 @@
 │  │                       INGESTION LAYER                              │   │
 │  │  jobspy ──► Indeed (8 search terms, up to 200 listings/run)        │   │
 │  │  JSearch ──► Google for Jobs (1 call/run, ~10 listings, free tier) │   │
+│  │  ATS boards ──► Greenhouse/Lever/Ashby JSON APIs (25 companies)    │   │
 │  │  Hard filters: age ≤ 48h · salary ≥ $100K · intern/junior titles  │   │
 │  │  Visa-rejected jobs: tagged visa_disqualified=True, not dropped    │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
@@ -55,7 +56,6 @@
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                    PERSISTENCE LAYER                               │   │
 │  │  PostgreSQL: jobs · applications · pipeline_runs                  │   │
-│  │  Redis: available (rate counters / cache — not actively used)     │   │
 │  └──────┬─────────────────────────────────┬──────────────────────────┘   │
 │         │                                 │                              │
 │  ┌──────▼──────────────────────────┐  ┌───▼──────────────────────────┐   │
@@ -74,14 +74,15 @@
 ## Components
 
 ### `src/ingestion/fetcher.py`
-Two sources merged before deduplication:
+Three sources merged before deduplication:
 - **jobspy / Indeed** — 8 search terms × 25 results, up to 200 listings/run.
 - **JSearch (RapidAPI)** — 1 call/run, rotates across 4 queries (one per 6h slot) to vary coverage. ~10 Google for Jobs results per run. Capped at 1 call/run to stay within 200 req/month free tier.
+- **ATS boards** (`src/ingestion/ats_boards.py`) — direct polling of 25 target companies' Greenhouse/Lever/Ashby public job-board APIs (free, unauthenticated JSON — no scraping, no bot detection; tokens in `data/ats_boards.py`, all verified live). Gets postings on day one instead of days later via Indeed. Per-company isolation: a 404/renamed token logs a warning and never breaks the others. Titles are pre-filtered to Java/backend/software-engineer roles and clearly non-US locations are dropped before the shared hard filters run. ATS jobs are exempt from the 48h age filter (postings stay open for weeks); dedup by content hash still guarantees each is scored only once.
 
 Excluded platforms: Glassdoor (400 errors), ZipRecruiter (403 bot block), LinkedIn (silent rate limits), native Google Jobs (jobspy cursor broken in v1.1.82).
 
 Hard pre-filters: age ≤ 48h, salary ≥ $100K, intern/junior title keywords, hard-excluded companies.
-Visa-rejected jobs (explicit "no sponsorship" phrases, US-citizenship mandates, or security-clearance requirements) are **tagged** `visa_disqualified=True` and kept — they pass through dedup and are persisted as `disqualified` so future runs skip them via the content hash.
+Visa-rejected jobs (explicit "no sponsorship" phrases, US-citizenship mandates, or security-clearance requirements) are **tagged** `visa_disqualified=True` and kept — they pass through dedup and are persisted as `disqualified` so future runs skip them via the content hash. The phrase list matches only unambiguous rejections: bare "us citizen" (E-Verify boilerplate) and "must be authorized to work" (an H1B holder *is* authorized) were removed after killing 60+ good jobs in production — those descriptions now fall through to LLM scoring, whose rubric handles the nuance.
 
 ### `src/ingestion/deduplicator.py`
 SHA-256 hash dedup against Postgres using `company + title + normalised_location`.
@@ -98,7 +99,7 @@ Claude Haiku (claude-haiku-4-5) scoring (0–100) with resume baked into system 
 System prompt contains: candidate resume (~8 years, Java/Spring/Kafka/cloud), scoring rubric (tech match 50%, seniority fit 30%, domain experience 20%), and calibration examples anchoring each score band. Company tier and salary explicitly neutral — rubric scores fit, not desirability. Job description truncated to first 2,000 + last 1,000 chars (head+tail) so requirements buried at the end of long JDs are not missed.
 
 ### `src/routing/router.py`
-Single apply queue: jobs with score ≥ `auto_apply_threshold` (75) go to `queued_apply`, sorted highest-first. Daily cap: 20 jobs/day. Overflow and sub-threshold jobs → `archived`. No human_review tier.
+Single apply queue: jobs with score ≥ `auto_apply_threshold` (75) go to `queued_apply`, sorted highest-first. Daily cap: 20 jobs/day. Overflow and sub-threshold jobs → `archived`. No human_review tier. Clone suppression: a job whose company+title already sits in the funnel (`queued_apply`/`applied`/`phone_screen`/`interview`/`offer`) — or was queued earlier in the same run — is archived, so one role posted in five cities enters the queue once. (The content hash includes the city on purpose; changing it would re-score the whole DB.)
 
 ### `src/feedback/gmail_monitor.py`
 Gmail API (google-api-python-client) polls unread emails from the last 48h every pipeline cycle. Known job-alert/marketing senders (domain or exact-address skip list mined from production logs; ATS domains deliberately excluded) are marked read without classification. Everything else is classified via Claude Haiku into: `confirmation` | `unimportant` | `rejection` | `assessment` | `recruiter_reply`. All processed emails are marked read. Action items (assessment, recruiter_reply) are also starred. DB status auto-update requires `confident=True` AND both company and title extracted — prevents misclassified newsletters from mutating live application status. Both `assessment` and `recruiter_reply` advance matched jobs to `phone_screen`.
@@ -220,7 +221,6 @@ _send_daily_digest()
 | Gmail API | Inbox monitoring, email classification, status updates | Google OAuth |
 | Telegram Bot API | Alerts and daily digest | Bot token |
 | PostgreSQL | Primary state store | Connection string |
-| Redis | Available in Docker Compose — not actively used | Connection string |
 
 ---
 

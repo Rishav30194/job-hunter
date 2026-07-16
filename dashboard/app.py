@@ -1,6 +1,6 @@
 """Streamlit dashboard — metrics, apply queue, applied funnel, all jobs, analytics, pipeline history."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 import plotly.express as px
@@ -40,8 +40,13 @@ def _query_metrics() -> dict:
         to_apply = session.scalar(
             select(func.count(Job.id)).where(Job.status.in_(["queued_apply", "human_review"]))
         ) or 0
+        # Scoped to recent fetches — an all-time count only ever grows and
+        # says nothing about the current market.
         high_match = session.scalar(
-            select(func.count(Job.id)).where(Job.score >= 85)
+            select(func.count(Job.id)).where(
+                Job.score >= 85,
+                Job.fetched_at >= datetime.now(_tz.utc).replace(tzinfo=None) - timedelta(days=30),
+            )
         ) or 0
         applied = session.scalar(
             select(func.count(Job.id)).where(
@@ -84,9 +89,15 @@ def _query_applied() -> list[dict]:
         return [_job_to_dict(j) for j in rows]
 
 
+_ALL_JOBS_LIMIT = 2000
+
+
 def _query_all_jobs() -> list[dict]:
+    """Most recent jobs, capped so the tab stays responsive as the table grows."""
     with get_session() as session:
-        rows = session.scalars(select(Job).order_by(Job.fetched_at.desc())).all()
+        rows = session.scalars(
+            select(Job).order_by(Job.fetched_at.desc()).limit(_ALL_JOBS_LIMIT)
+        ).all()
         return [_job_to_dict(j) for j in rows]
 
 
@@ -199,7 +210,7 @@ def _update_status(job_id: str, new_status: str) -> None:
             ).first()
             if app:
                 app.status = new_status
-                app.updated_at = datetime.utcnow()
+                app.updated_at = datetime.now(timezone.utc)
 
 
 def _save_note(job_id: str, note: str) -> None:
@@ -224,7 +235,7 @@ except Exception as _db_err:
 
 c1, c2, c3, c4, c5, c6 = st.columns(6)
 c1.metric("To Apply (≥75)", metrics["to_apply"])
-c2.metric("High Match (≥85)", metrics["high_match"])
+c2.metric("High Match (≥85, 30d)", metrics["high_match"])
 c3.metric("Applied", metrics["applied"])
 c4.metric("Applied Today", metrics["applied_today"])
 c5.metric("Applied This Week", metrics["applied_week"])
@@ -370,6 +381,8 @@ with tab_all:
     if not all_jobs:
         st.info("No jobs in the database yet.")
     else:
+        if len(all_jobs) >= _ALL_JOBS_LIMIT:
+            st.caption(f"Showing the {_ALL_JOBS_LIMIT:,} most recently fetched jobs.")
         df_all = pd.DataFrame(all_jobs)
 
         col_search, col_status, col_score = st.columns([3, 2, 2])

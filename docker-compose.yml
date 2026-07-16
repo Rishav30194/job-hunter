@@ -21,17 +21,6 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "127.0.0.1:6379:6379"
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   scheduler:
     build: .
     command: python src/main.py
@@ -39,8 +28,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
     restart: unless-stopped
     volumes:
       - .:/app
@@ -59,8 +46,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
     restart: unless-stopped
     volumes:
       - .:/app

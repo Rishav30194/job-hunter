@@ -555,6 +555,19 @@ curl http://localhost:8501                 # dashboard responds 200
 - **Nightly DB backups** — `deploy/backup.sh` via VPS host cron (03:00 UTC, gzip pg_dump, integrity-checked, 14-day retention in /root/backups/job-hunter).
 - **Cost optimization (~$40/mo → ~$8–15/mo API spend)** — scoring moved to the Message Batches API (50% token price, sequential fallback on failure), and the scoring system prompt was expanded past Haiku 4.5's 4,096-token cache minimum (it silently failed to cache before), so the ~4,200-token prefix reads at one-tenth input price. Verified live: cache write/read confirmed via usage fields; 3-job batch scored end-to-end.
 
+## Post-Launch Improvements — Visa Pre-Filter & Quality (2026-07-15)
+
+Per `docs/improvement-plan-2026-07-07.md` (branch `fix/visa-prefilter-and-improvements`):
+
+- **Visa pre-filter false positives fixed** — ambiguous phrases removed from `VISA_REJECTION_PHRASES`: bare "us citizen"/"u.s. citizen"/"united states citizen" matched E-Verify compliance boilerplate (47 confirmed good-job kills, incl. a Tier-1 U.S. Bank senior role), and "must be authorized to work…"/"must be legally authorized" are not sponsorship rejections (16 kills). Unambiguous forms ("must be a us citizen", "citizens only", "citizenship required") kept. Ambiguous descriptions now fall through to LLM scoring. 11 unit tests in `tests/test_fetcher.py`.
+- **One-time recovery script** — `scripts/rescore_false_disqualified.py` re-runs the new filter on rows disqualified in the last 30 days, re-scores the false positives through the normal batch scorer, queues those ≥75 (cap ignored for the recovery), and reports via Telegram. Idempotent; run once on the VPS after deploy.
+- **Queue clone suppression** — `route_jobs()` archives a job whose company+title is already in the funnel or queued earlier in the same run; one role posted in N cities no longer enters the queue N times. Fixed at the routing layer deliberately — changing `compute_hash` would invalidate 6,680 existing hashes. 5 unit tests in `tests/test_router.py`.
+- **Dashboard cleanups** — deprecated `datetime.utcnow()` replaced; "High Match" metric scoped to the last 30 days; All Jobs tab capped at the 2,000 most recent rows with a caption.
+- **ATS board polling (biggest coverage win)** — `src/ingestion/ats_boards.py` polls 25 target companies' Greenhouse/Lever/Ashby public job-board APIs every run (tokens live-verified, listed in `data/ats_boards.py`). Title pre-filter (Java/backend/SWE) + US-location filter (drop only on unambiguous foreign signal; validated against all 241 distinct live location strings) before the shared hard filters; exempt from the 48h age filter. Live end-to-end run: 709 relevant US jobs, 661 after filters, ~$1.18 one-time backlog scoring. 7 unit tests in `tests/test_ats_boards.py`.
+- **Redis removed** (approved) — service, depends_on, `redis_url`, `REDIS_URL`, and the `redis` package dropped; nothing ever used it. `extra="ignore"` in settings means a stale REDIS_URL in the VPS .env is harmless.
+- **Dead auto-apply remnants deleted** (approved) — `src/apply/` (referenced a module that no longer exists) and local `data/indeed_session.json`. The VPS copy of `data/indeed_session.json` should be removed on next deploy.
+- Deferred: jobspy/Google retry (Change 6) — only if ATS coverage feels thin after a couple of weeks.
+
 ## Post-Launch Improvements — API Cost Round 2 (2026-07-15)
 
 Per `docs/cost-optimization-plan-2026-07-07.md` (branch `chore/api-cost-round2`):

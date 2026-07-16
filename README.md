@@ -44,7 +44,6 @@ Every pipeline run
 - **jobspy** — Indeed scraping
 - **JSearch** (RapidAPI) — Google for Jobs aggregation
 - **PostgreSQL** — state store (jobs, applications, pipeline runs)
-- **Redis** — available in Compose (rate counters / cache)
 - **Streamlit** — dashboard
 - **Telegram Bot API** — alerts and daily digest
 - **Gmail API** — inbox monitoring, funnel status updates
@@ -78,7 +77,7 @@ python3.12 -m venv venv
 venv/bin/pip install -r requirements.txt
 
 # 3. Start services and run migrations
-docker compose up -d postgres redis
+docker compose up -d postgres
 venv/bin/alembic upgrade head
 
 # 4. Run
@@ -96,7 +95,6 @@ PYTHONPATH=. venv/bin/streamlit run dashboard/app.py          # dashboard on :85
 | `TELEGRAM_CHAT_ID` | Your personal chat ID |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | Gmail API |
 | `DATABASE_URL` | PostgreSQL connection string |
-| `REDIS_URL` | Redis connection string |
 
 See `.env.example` for the full list.
 

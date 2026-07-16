@@ -9,6 +9,38 @@ from src.db.models import Job
 # All statuses that count toward the daily apply queue cap.
 _APPLIED_STATUSES = {"queued_apply", "applied", "apply_failed"}
 
+# Statuses meaning the same role is already in the application funnel — a clone
+# of it (same role posted in another city) adds queue noise, not opportunity.
+_FUNNEL_STATUSES = ("queued_apply", "applied", "phone_screen", "interview", "offer")
+
+
+def _is_funnel_duplicate(job: dict, session: Session, queued_this_run: list[dict]) -> bool:
+    """Return True when the same company+title is already in the funnel.
+
+    compute_hash includes the city, so one role posted in N cities scores N
+    times and would enter the queue N times. Checked here at the routing layer
+    rather than by changing the hash — changing compute_hash would invalidate
+    all existing hashes and re-score the whole DB as "new".
+    """
+    company = (job.get("company") or "").lower()
+    title = (job.get("title") or "").lower()
+    if not company or not title:
+        return False
+
+    for queued in queued_this_run:
+        if (queued.get("company") or "").lower() == company \
+                and (queued.get("title") or "").lower() == title:
+            return True
+
+    duplicate = session.scalar(
+        select(func.count(Job.id)).where(
+            Job.status.in_(_FUNNEL_STATUSES),
+            func.lower(Job.company) == company,
+            func.lower(Job.title) == title,
+        )
+    )
+    return bool(duplicate)
+
 
 def route_jobs(jobs: list[dict], session: Session) -> dict[str, list[dict]]:
     """Routes scored jobs into three buckets based on score thresholds and a daily cap.
@@ -48,6 +80,10 @@ def route_jobs(jobs: list[dict], session: Session) -> dict[str, list[dict]]:
         score = job.get("score") or 0
 
         if score >= settings.auto_apply_threshold:
+            if _is_funnel_duplicate(job, session, buckets["queued_apply"]):
+                job["status"] = "archived"  # same role already in the funnel elsewhere
+                buckets["archived"].append(job)
+                continue
             cap_remaining = settings.max_queued_per_day - already_queued - queued_this_run
             if cap_remaining > 0:
                 job["status"] = "queued_apply"
