@@ -13,7 +13,7 @@ from tenacity import (
 
 from config.settings import settings
 from data.companies import get_tier
-from src.anthropic_guard import CreditExhaustedError, is_credit_error
+from src.anthropic_guard import CreditExhaustedError, is_credit_error, retryable_api_error
 from src.notifications.telegram import send_message
 from src.scoring.prompts import SCORING_TOOL, build_system_prompt, build_user_prompt
 
@@ -60,12 +60,6 @@ _UNSCORED_FIELDS: dict = {
 }
 
 
-def _retryable(exc: BaseException) -> bool:
-    """Retry transient API errors, but never the out-of-credits 400."""
-    return (
-        isinstance(exc, (anthropic.RateLimitError, anthropic.APIStatusError))
-        and not is_credit_error(exc)
-    )
 
 
 def score_jobs(jobs: list[dict]) -> list[dict]:
@@ -262,7 +256,7 @@ def _alert_credit_exhausted() -> None:
 
 
 @retry(
-    retry=retry_if_exception(_retryable),
+    retry=retry_if_exception(retryable_api_error),
     wait=wait_exponential(multiplier=1, min=2, max=30),
     stop=stop_after_attempt(3),
     reraise=True,

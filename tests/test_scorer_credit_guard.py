@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch
 
-from src.anthropic_guard import CreditExhaustedError, is_credit_error
+from src.anthropic_guard import CreditExhaustedError, is_credit_error, retryable_api_error
 from src.scoring import scorer
 
 CREDIT_MSG = (
@@ -80,8 +80,8 @@ class CreditGuardTest(unittest.TestCase):
         resp = httpx.Response(400, request=httpx.Request("POST", "https://x"), json={})
         credit = anthropic.BadRequestError(CREDIT_MSG, response=resp, body=None)
         other = anthropic.BadRequestError("bad schema", response=resp, body=None)
-        self.assertFalse(scorer._retryable(credit))
-        self.assertTrue(scorer._retryable(other))
+        self.assertFalse(retryable_api_error(credit))
+        self.assertTrue(retryable_api_error(other))
 
 
 if __name__ == "__main__":
