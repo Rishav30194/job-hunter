@@ -55,7 +55,6 @@
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                    PERSISTENCE LAYER                               │   │
 │  │  PostgreSQL: jobs · applications · pipeline_runs                  │   │
-│  │  Redis: available (rate counters / cache — not actively used)     │   │
 │  └──────┬─────────────────────────────────┬──────────────────────────┘   │
 │         │                                 │                              │
 │  ┌──────▼──────────────────────────┐  ┌───▼──────────────────────────┐   │
@@ -220,7 +219,6 @@ _send_daily_digest()
 | Gmail API | Inbox monitoring, email classification, status updates | Google OAuth |
 | Telegram Bot API | Alerts and daily digest | Bot token |
 | PostgreSQL | Primary state store | Connection string |
-| Redis | Available in Docker Compose — not actively used | Connection string |
 
 ---
 

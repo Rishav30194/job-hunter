@@ -19,8 +19,6 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     # Optional — enabled only when the relevant phase is active           #
     # ------------------------------------------------------------------ #
-    redis_url: str = "redis://redis:6379/0"
-
     rapidapi_key: str = ""         # JSearch (Google for Jobs) — Phase 9; skipped if empty
 
     google_client_id: str = ""

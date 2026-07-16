@@ -4,7 +4,7 @@ Autonomous 24/7 job search, scoring, and application system for US tech/finance 
 
 ## Stack
 - Python 3.12, APScheduler, jobspy, Anthropic Claude API
-- PostgreSQL (state), Redis (cache), Docker Compose
+- PostgreSQL (state), Docker Compose
 - Streamlit (dashboard), Telegram (alerts)
 
 ## Setup & Run
@@ -12,7 +12,7 @@ Autonomous 24/7 job search, scoring, and application system for US tech/finance 
 cp .env.example .env                     # fill in all required values
 python3.12 -m venv venv
 venv/bin/pip install -r requirements.txt
-docker compose up -d postgres redis
+docker compose up -d postgres
 # Schema is created automatically on startup (init_db / create_all) — no migration step.
 
 venv/bin/python -m src.main              # scheduler — runs every 6h
@@ -71,7 +71,7 @@ Missing required keys must fail loudly on startup — no silent fallbacks.
 | API keys | `ANTHROPIC_API_KEY`, `RAPIDAPI_KEY` |
 | Tokens | `TELEGRAM_BOT_TOKEN` |
 | OAuth | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` |
-| DB | `DATABASE_URL`, `POSTGRES_PASSWORD`, `REDIS_URL` |
+| DB | `DATABASE_URL`, `POSTGRES_PASSWORD` |
 | Personal | `TELEGRAM_CHAT_ID`, any email or phone number |
 
 Adding a new secret: add to `.env.example` → `config/settings.py` → this table. In that order.
