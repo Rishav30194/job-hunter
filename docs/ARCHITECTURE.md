@@ -15,6 +15,7 @@
 │  │                       INGESTION LAYER                              │   │
 │  │  jobspy ──► Indeed (8 search terms, up to 200 listings/run)        │   │
 │  │  JSearch ──► Google for Jobs (1 call/run, ~10 listings, free tier) │   │
+│  │  ATS boards ──► Greenhouse/Lever/Ashby JSON APIs (25 companies)    │   │
 │  │  Hard filters: age ≤ 48h · salary ≥ $100K · intern/junior titles  │   │
 │  │  Visa-rejected jobs: tagged visa_disqualified=True, not dropped    │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
@@ -73,9 +74,10 @@
 ## Components
 
 ### `src/ingestion/fetcher.py`
-Two sources merged before deduplication:
+Three sources merged before deduplication:
 - **jobspy / Indeed** — 8 search terms × 25 results, up to 200 listings/run.
 - **JSearch (RapidAPI)** — 1 call/run, rotates across 4 queries (one per 6h slot) to vary coverage. ~10 Google for Jobs results per run. Capped at 1 call/run to stay within 200 req/month free tier.
+- **ATS boards** (`src/ingestion/ats_boards.py`) — direct polling of 25 target companies' Greenhouse/Lever/Ashby public job-board APIs (free, unauthenticated JSON — no scraping, no bot detection; tokens in `data/ats_boards.py`, all verified live). Gets postings on day one instead of days later via Indeed. Per-company isolation: a 404/renamed token logs a warning and never breaks the others. Titles are pre-filtered to Java/backend/software-engineer roles and clearly non-US locations are dropped before the shared hard filters run. ATS jobs are exempt from the 48h age filter (postings stay open for weeks); dedup by content hash still guarantees each is scored only once.
 
 Excluded platforms: Glassdoor (400 errors), ZipRecruiter (403 bot block), LinkedIn (silent rate limits), native Google Jobs (jobspy cursor broken in v1.1.82).
 
