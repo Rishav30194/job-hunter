@@ -15,12 +15,14 @@ import base64
 import html
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 import anthropic
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from config.settings import settings
+from src.anthropic_guard import CreditExhaustedError, is_credit_error, retryable_api_error
 from src.db.models import Application, Job
 from src.db.session import get_session
 from src.notifications.telegram import send_message
@@ -123,7 +125,14 @@ Rules:
 
 
 def check_gmail() -> dict:
-    """Fetch unread job emails, classify, update DB, and alert. Returns a stats dict."""
+    """Fetch unread job emails, classify them in one Message Batch, update DB, and alert.
+
+    Noise senders and empty emails are marked read without classification.
+    The rest are classified via the Batches API (50% token price); entries the
+    batch missed fall back to sequential calls. Emails that cannot be
+    classified (e.g. credits exhausted) stay unread and retry next cycle.
+    Returns a stats dict.
+    """
     stats = {
         "processed": 0, "confirmations": 0, "rejections": 0,
         "action_items": 0, "skipped_noise": 0, "errors": 0,
@@ -143,10 +152,50 @@ def check_gmail() -> dict:
 
     logger.info("Gmail: found %d unread messages to process", len(message_ids))
 
+    # Gather: fetch texts, dispose of noise/empty messages without an API call.
+    to_classify: list[tuple[str, str, str, str]] = []
     for msg_id in message_ids:
         try:
-            _process_message(service, msg_id, stats)
+            subject, sender, body = _get_email_text(service, msg_id)
+            if not body and not subject:
+                _mark_read(service, msg_id)
+                continue
+            if _is_noise_sender(sender):
+                _mark_read(service, msg_id)
+                stats["skipped_noise"] += 1
+                continue
+            to_classify.append((msg_id, subject, sender, body))
         except Exception:
+            logger.exception("Failed to fetch message %s", msg_id)
+            stats["errors"] += 1
+
+    # Classify: one batch for everything; missing entries fall back below.
+    classifications: dict[str, dict] = {}
+    credit_exhausted = False
+    if to_classify:
+        try:
+            classifications = _classify_batch(to_classify)
+        except CreditExhaustedError as exc:
+            classifications = exc.args[0] if exc.args else {}
+            credit_exhausted = True
+            logger.error("API credits exhausted — unclassified emails stay unread for next cycle")
+        except Exception:
+            logger.exception("Batch classification failed — falling back to sequential")
+
+    # Act on each classification; unclassified emails stay unread and retry.
+    for msg_id, subject, sender, body in to_classify:
+        classification = classifications.get(msg_id)
+        if classification is None and credit_exhausted:
+            continue
+        try:
+            if classification is None:
+                classification = _classify_email(subject, sender, body)
+            _act_on_classification(service, msg_id, sender, classification, stats)
+        except Exception as exc:
+            if is_credit_error(exc):
+                credit_exhausted = True
+                logger.error("API credits exhausted — remaining emails stay unread for next cycle")
+                continue
             logger.exception("Failed to process message %s", msg_id)
             stats["errors"] += 1
 
@@ -261,28 +310,21 @@ def _decode_part(payload: dict) -> str:
     return base64.urlsafe_b64decode(padded).decode("utf-8", errors="replace")
 
 
-@retry(
-    retry=retry_if_exception_type((anthropic.RateLimitError, anthropic.APIStatusError)),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    stop=stop_after_attempt(3),
-    reraise=True,
-)
-def _classify_email(subject: str, sender: str, body: str) -> dict:
-    """Call Claude Haiku to classify the email and extract company/title.
+def _classify_request_params(subject: str, sender: str, body: str) -> dict:
+    """Build the Messages API request body for one email — shared by batch and sequential paths."""
+    return {
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 300,
+        "temperature": 0,
+        "system": _SYSTEM_PROMPT,
+        "tools": [_CLASSIFICATION_TOOL],
+        "tool_choice": {"type": "tool", "name": "classify_email"},
+        "messages": [{"role": "user", "content": f"From: {sender}\nSubject: {subject}\n\n{body}"}],
+    }
 
-    Retries up to 3 times on rate limit or transient API errors.
-    Returns a dict with keys: category, company, job_title, summary, confident.
-    """
-    user_content = f"From: {sender}\nSubject: {subject}\n\n{body}"
-    response = _client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=300,
-        temperature=0,
-        system=_SYSTEM_PROMPT,
-        tools=[_CLASSIFICATION_TOOL],
-        tool_choice={"type": "tool", "name": "classify_email"},
-        messages=[{"role": "user", "content": user_content}],
-    )
+
+def _parse_classification(response) -> dict:
+    """Extract the classification dict from a Messages API response. Raises on malformed output."""
     tool_block = next((b for b in response.content if b.type == "tool_use"), None)
     if tool_block is None:
         raise ValueError("No tool_use block in classify_email response")
@@ -290,6 +332,75 @@ def _classify_email(subject: str, sender: str, body: str) -> dict:
     # Haiku occasionally omits optional-feeling booleans despite schema requiring them
     result.setdefault("confident", False)
     return result
+
+
+# Emails are few (typically <30/run) and small; batches normally end in
+# minutes. On timeout the remaining messages simply stay unread and are
+# retried next cycle, so a modest ceiling is fine.
+_CLASSIFY_POLL_SECONDS = 15
+_CLASSIFY_TIMEOUT_SECONDS = 30 * 60
+
+
+def _classify_batch(items: list[tuple[str, str, str, str]]) -> dict[str, dict]:
+    """Classify all emails as one Message Batch — 50% of the sequential token price.
+
+    Returns classifications keyed by Gmail message id. Ids whose entries
+    errored or were malformed are absent — the caller falls back sequentially.
+    Raises CreditExhaustedError (carrying partial results) when the account
+    is out of credits.
+    """
+    requests = [
+        {"custom_id": f"email-{msg_id}", "params": _classify_request_params(subject, sender, body)}
+        for msg_id, subject, sender, body in items
+    ]
+    batch = _client.messages.batches.create(requests=requests)
+    logger.info("Submitted email classification batch %s (%d requests)", batch.id, len(requests))
+
+    deadline = time.monotonic() + _CLASSIFY_TIMEOUT_SECONDS
+    while batch.processing_status != "ended":
+        if time.monotonic() > deadline:
+            _client.messages.batches.cancel(batch.id)
+            raise TimeoutError(f"Classification batch {batch.id} did not finish in time")
+        time.sleep(_CLASSIFY_POLL_SECONDS)
+        batch = _client.messages.batches.retrieve(batch.id)
+
+    classified: dict[str, dict] = {}
+    credit_errors = 0
+    for entry in _client.messages.batches.results(batch.id):
+        msg_id = entry.custom_id.removeprefix("email-")
+        if entry.result.type == "succeeded":
+            try:
+                classified[msg_id] = _parse_classification(entry.result.message)
+            except Exception:
+                logger.warning("Malformed batch result for %s — will classify sequentially", msg_id)
+        elif entry.result.type == "errored" and is_credit_error(entry.result.error):
+            credit_errors += 1
+        else:
+            logger.warning(
+                "Classification for %s ended as %r — will classify sequentially",
+                msg_id, entry.result.type,
+            )
+
+    logger.info("Classification batch %s complete: %d/%d classified", batch.id, len(classified), len(requests))
+    if credit_errors:
+        raise CreditExhaustedError(classified)
+    return classified
+
+
+@retry(
+    retry=retry_if_exception(retryable_api_error),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
+def _classify_email(subject: str, sender: str, body: str) -> dict:
+    """Sequential fallback: classify one email directly.
+
+    Retries up to 3 times on transient API errors (never on exhausted credits).
+    Returns a dict with keys: category, company, job_title, summary, confident.
+    """
+    response = _client.messages.create(**_classify_request_params(subject, sender, body))
+    return _parse_classification(response)
 
 
 def _mark_read(service, msg_id: str) -> None:
@@ -360,19 +471,8 @@ def _update_job_status(job_id: str, new_status: str) -> None:
         logger.warning("DB update failed for job %s → %s", job_id, new_status)
 
 
-def _process_message(service, msg_id: str, stats: dict) -> None:
-    """Classify one email and take appropriate action."""
-    subject, sender, body = _get_email_text(service, msg_id)
-    if not body and not subject:
-        _mark_read(service, msg_id)
-        return
-
-    if _is_noise_sender(sender):
-        _mark_read(service, msg_id)
-        stats["skipped_noise"] += 1
-        return
-
-    classification = _classify_email(subject, sender, body)
+def _act_on_classification(service, msg_id: str, sender: str, classification: dict, stats: dict) -> None:
+    """Take the appropriate action for one classified email."""
     category = classification["category"]
     company = (classification.get("company") or "").strip()
     job_title = (classification.get("job_title") or "").strip()
