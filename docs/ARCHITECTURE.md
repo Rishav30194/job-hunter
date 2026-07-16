@@ -81,7 +81,7 @@ Two sources merged before deduplication:
 Excluded platforms: Glassdoor (400 errors), ZipRecruiter (403 bot block), LinkedIn (silent rate limits), native Google Jobs (jobspy cursor broken in v1.1.82).
 
 Hard pre-filters: age ≤ 48h, salary ≥ $100K, intern/junior title keywords, hard-excluded companies.
-Visa-rejected jobs (explicit "no sponsorship" phrases, US-citizenship mandates, or security-clearance requirements) are **tagged** `visa_disqualified=True` and kept — they pass through dedup and are persisted as `disqualified` so future runs skip them via the content hash.
+Visa-rejected jobs (explicit "no sponsorship" phrases, US-citizenship mandates, or security-clearance requirements) are **tagged** `visa_disqualified=True` and kept — they pass through dedup and are persisted as `disqualified` so future runs skip them via the content hash. The phrase list matches only unambiguous rejections: bare "us citizen" (E-Verify boilerplate) and "must be authorized to work" (an H1B holder *is* authorized) were removed after killing 60+ good jobs in production — those descriptions now fall through to LLM scoring, whose rubric handles the nuance.
 
 ### `src/ingestion/deduplicator.py`
 SHA-256 hash dedup against Postgres using `company + title + normalised_location`.
@@ -98,7 +98,7 @@ Claude Haiku (claude-haiku-4-5) scoring (0–100) with resume baked into system 
 System prompt contains: candidate resume (~8 years, Java/Spring/Kafka/cloud), scoring rubric (tech match 50%, seniority fit 30%, domain experience 20%), and calibration examples anchoring each score band. Company tier and salary explicitly neutral — rubric scores fit, not desirability. Job description truncated to first 2,000 + last 1,000 chars (head+tail) so requirements buried at the end of long JDs are not missed.
 
 ### `src/routing/router.py`
-Single apply queue: jobs with score ≥ `auto_apply_threshold` (75) go to `queued_apply`, sorted highest-first. Daily cap: 20 jobs/day. Overflow and sub-threshold jobs → `archived`. No human_review tier.
+Single apply queue: jobs with score ≥ `auto_apply_threshold` (75) go to `queued_apply`, sorted highest-first. Daily cap: 20 jobs/day. Overflow and sub-threshold jobs → `archived`. No human_review tier. Clone suppression: a job whose company+title already sits in the funnel (`queued_apply`/`applied`/`phone_screen`/`interview`/`offer`) — or was queued earlier in the same run — is archived, so one role posted in five cities enters the queue once. (The content hash includes the city on purpose; changing it would re-score the whole DB.)
 
 ### `src/feedback/gmail_monitor.py`
 Gmail API (google-api-python-client) polls unread emails from the last 48h every pipeline cycle. Classifies via Claude Haiku into: `confirmation` | `unimportant` | `rejection` | `assessment` | `recruiter_reply`. All processed emails are marked read. Action items (assessment, recruiter_reply) are also starred. DB status auto-update requires `confident=True` AND both company and title extracted — prevents misclassified newsletters from mutating live application status. Both `assessment` and `recruiter_reply` advance matched jobs to `phone_screen`.
