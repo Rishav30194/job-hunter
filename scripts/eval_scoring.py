@@ -16,7 +16,6 @@ Usage:
 """
 
 import argparse
-import copy
 import json
 import logging
 import sys
@@ -27,7 +26,7 @@ from pathlib import Path
 import anthropic
 
 from config.settings import settings
-from src.scoring.prompts import SCORING_TOOL, build_system_prompt, build_user_prompt
+from src.scoring.prompts import SCORING_TOOL, SCORING_TOOL_STRICT, build_system_prompt, build_user_prompt
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("eval_scoring")
@@ -49,33 +48,6 @@ _CACHE_READ_MULTIPLIER = 0.10
 _BATCH_DISCOUNT = 0.5
 
 _FORCED = {"type": "tool", "name": "score_job"}
-
-
-def _strict_tool() -> dict:
-    """Return SCORING_TOOL in strict mode — strict rejects minimum/maximum on integers."""
-    tool = copy.deepcopy(SCORING_TOOL)
-    tool["strict"] = True
-    tool["input_schema"]["additionalProperties"] = False
-    for bound in ("minimum", "maximum"):
-        tool["input_schema"]["properties"]["score"].pop(bound)
-    return tool
-
-
-def _long_user_prompt(job: dict) -> str:
-    """Return the user prompt with a 12,000-character description window (9K head + 3K tail).
-
-    Mirrors build_user_prompt except for the window, so experiment 3.2 changes
-    only how much of the description the model sees.
-    """
-    trimmed = dict(job)
-    description = job.get("description") or ""
-    head, tail = 9000, 3000
-    if len(description) > head + tail:
-        description = description[:head] + "\n...\n" + description[-tail:]
-    # build_user_prompt ends with the description, so an empty one leaves the
-    # header to append the wider window to.
-    trimmed["description"] = ""
-    return build_user_prompt(trimmed) + description
 
 
 def _config(model: str, *, temperature: bool = False, strict: bool = False,
@@ -111,12 +83,13 @@ def _request_params(config: dict, job: dict) -> dict:
     With an effort level set, tool_choice is auto so the model can think before
     calling the tool; without one it stays forced, which skips thinking.
     """
-    user_prompt = _long_user_prompt(job) if config["long_description"] else build_user_prompt(job)
+    # The long window and strict tool are the production Haiku 5.5 settings (scorer.py).
+    user_prompt = build_user_prompt(job, head=9000, tail=3000) if config["long_description"] else build_user_prompt(job)
     params = {
         "model": config["model"],
         "max_tokens": 4096 if config["effort"] else (512 if config["temperature"] else 1024),
         "system": _system(),
-        "tools": [_strict_tool() if config["strict"] else SCORING_TOOL],
+        "tools": [SCORING_TOOL_STRICT if config["strict"] else SCORING_TOOL],
         "tool_choice": {"type": "auto"} if config["effort"] else _FORCED,
         "messages": [{"role": "user", "content": user_prompt}],
     }
