@@ -28,13 +28,13 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     # Tunable pipeline behaviour                                           #
     # ------------------------------------------------------------------ #
-    # Model for job scoring and email classification. Switching between Haiku
-    # 4.5 and 5.5 is a restart, not a redeploy — see
-    # docs/haiku-5-5-upgrade-plan-2026-10-10.md (Phase 4 rollback).
-    claude_model: str = "claude-haiku-4-5-20251001"
+    # Model for job scoring and email classification. The request shape and the
+    # thresholds below are tuned for Haiku 5.5; another model needs a new eval
+    # (docs/haiku-5-5-upgrade-plan-2026-10-10.md, including the rollback steps).
+    claude_model: str = "claude-haiku-5-5"
 
-    high_match_threshold: int = 85   # score at which Telegram alert fires
-    auto_apply_threshold: int = 75   # minimum score to enter apply queue
+    high_match_threshold: int = 80   # score at which Telegram alert fires
+    auto_apply_threshold: int = 70   # minimum score to enter apply queue
     max_queued_per_day: int = 20     # daily cap on new queued_apply jobs
 
     fetch_interval_hours: float = 6

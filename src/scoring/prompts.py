@@ -1,7 +1,5 @@
 """System and user prompt builders for Claude Haiku job scoring."""
 
-import copy
-
 # ---------------------------------------------------------------------------
 # Candidate resume — baked into the system prompt so every scoring call has
 # full context without re-sending it on each message.
@@ -270,10 +268,13 @@ M) score=58, visa_disqualified=false
 # ---------------------------------------------------------------------------
 # Tool definition — enforces output schema at the API level.
 # scorer.py passes this with tool_choice=forced so the API rejects any
-# response that does not call score_job with conforming arguments.
+# response that does not call score_job with conforming arguments. Strict mode
+# guarantees every field, but rejects integer minimum/maximum (verified
+# 2026-10-10), so scorer.py clamps the score to 0–100 instead.
 # ---------------------------------------------------------------------------
 SCORING_TOOL: dict = {
     "name": "score_job",
+    "strict": True,
     "description": (
         "Submit the match score and analysis for a job listing against the candidate profile. "
         "Always call this tool — never respond with plain text."
@@ -283,8 +284,6 @@ SCORING_TOOL: dict = {
         "properties": {
             "score": {
                 "type": "integer",
-                "minimum": 0,
-                "maximum": 100,
                 "description": "Match score 0–100 per the rubric.",
             },
             "reasoning": {
@@ -304,25 +303,18 @@ SCORING_TOOL: dict = {
             },
         },
         "required": ["score", "reasoning", "visa_disqualified"],
+        "additionalProperties": False,
     },
 }
-
-# Strict mode guarantees the input matches the schema, but rejects integer
-# minimum/maximum (verified 2026-10-10), so scorer.py clamps the score instead.
-SCORING_TOOL_STRICT: dict = copy.deepcopy(SCORING_TOOL)
-SCORING_TOOL_STRICT["strict"] = True
-SCORING_TOOL_STRICT["input_schema"]["additionalProperties"] = False
-for _bound in ("minimum", "maximum"):
-    SCORING_TOOL_STRICT["input_schema"]["properties"]["score"].pop(_bound)
 
 
 def build_system_prompt() -> str:
     """Return the system prompt with resume, rubric, and calibration examples baked in.
 
     Sent once per API call. scorer.py wraps this in a cache_control content block.
-    The system+tools prefix is deliberately kept above Haiku 4.5's 4,096-token
-    cache minimum (currently ~4,270 tokens) — below that threshold the cache
-    marker silently no-ops and every call pays full input price.
+    The prefix (~6,200 tokens on Haiku 5.5) is far above that model's 512-token
+    cache minimum; a model with a higher minimum (Haiku 4.5: 4,096) needs it
+    re-checked, because below the minimum the cache marker silently no-ops.
     """
     return (
         "You are a precise job-match scorer for a specific candidate. "
@@ -333,11 +325,13 @@ def build_system_prompt() -> str:
     )
 
 
-def build_user_prompt(job: dict, *, head: int = 2000, tail: int = 1000) -> str:
+def build_user_prompt(job: dict, *, head: int = 9000, tail: int = 3000) -> str:
     """Return the user prompt for a single job.
 
     Keeps the first `head` and last `tail` characters of a longer description.
-    This is the single authoritative truncation point — scorer.py only picks the window.
+    The 12,000-character default keeps sponsorship and years requirements that sit
+    mid-description, which a 3,000-character window used to drop. This is the
+    single authoritative truncation point — scorer.py does not pre-truncate.
     """
     description = job.get("description") or ""
     if len(description) > head + tail:

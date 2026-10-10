@@ -407,7 +407,18 @@ One final configuration is chosen and recorded here with its eval numbers, and t
    | Console spend per day | About 1/4 to 1/7 of the Phase 0 baseline | Higher than the baseline |
    | Gmail classifications | No false status changes | Any wrong `rejected` or `phone_screen` update |
 
-5. **Rollback:** remove those three lines (or set `CLAUDE_MODEL=claude-haiku-4-5-20251001`, `AUTO_APPLY_THRESHOLD=75`, and `HIGH_MATCH_THRESHOLD=85`) and restart `scheduler`. No redeploy is needed. The seniority rule change stays on both models. Changes from Phase 3 that only work on Haiku 5.5, such as `effort`, must be skipped when the setting names a Haiku 4.5 model, so rollback stays a one-line change.
+5. **Rollback.** From the dependency upgrade on, the code has one request shape, tuned for Haiku 5.5 (no `temperature`, strict tool, 12K window), and no Haiku 4.5 path. Commit `c88a55e` (PR #15's merge) is the last release that scores Haiku 4.5 exactly as before the upgrade; it also has the older pinned dependencies. To go back:
+
+   ```bash
+   ssh root@5.78.207.143
+   cd /opt/job-hunter
+   git checkout c88a55e                 # detached HEAD on the last Haiku 4.5-capable release
+   # In .env: CLAUDE_MODEL=claude-haiku-4-5-20251001, AUTO_APPLY_THRESHOLD=75, HIGH_MATCH_THRESHOLD=85
+   docker compose build
+   docker compose up -d --force-recreate scheduler dashboard   # recreate, so .env is reloaded
+   ```
+
+   To return to the current release afterwards: `git checkout main`, restore the three `.env` values (Haiku 5.5, 70, 80), build, and recreate. That release keeps the softer seniority rule, which applies to both models.
 6. After 2 stable weeks, update the memory notes on the caching minimum and cost, and mark this plan complete.
 
 ---

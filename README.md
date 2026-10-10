@@ -137,7 +137,7 @@ Claude Haiku receives the candidate's resume baked into the system prompt and ev
 
 Company tier and salary are passed as context but **do not affect the score**. The rubric scores fit, not desirability.
 
-Jobs scoring at or above `AUTO_APPLY_THRESHOLD` (75 on Claude Haiku 4.5, 70 on Claude Haiku 5.5, which scores lower) go to the Apply Queue. Everything else is archived.
+Jobs scoring at or above `AUTO_APPLY_THRESHOLD` (default 70, calibrated for Claude Haiku 5.5) go to the Apply Queue. Everything else is archived.
 
 ---
 
@@ -160,7 +160,7 @@ Auto-updates require `confident=True` AND both company and job title extracted �
 |---------|-------|
 | Fetch interval | 6 hours |
 | Max job age | 48 hours |
-| Apply queue threshold | Score ≥ 75 (Haiku 4.5) or ≥ 70 (Haiku 5.5), set by `AUTO_APPLY_THRESHOLD` |
+| Apply queue threshold | Score ≥ 70, set by `AUTO_APPLY_THRESHOLD` (calibrated for Haiku 5.5) |
 | Daily apply cap | 20 jobs |
 | Queue expiry | 30 days (auto-archived) |
 | Rejection cooldown | 30 days, after 4+ rejections; tier-1/2 companies exempt |

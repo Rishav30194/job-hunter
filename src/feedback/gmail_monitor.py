@@ -22,7 +22,7 @@ import anthropic
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from config.settings import settings
-from src.anthropic_guard import CreditExhaustedError, create_kwargs, is_credit_error, retryable_api_error
+from src.anthropic_guard import CreditExhaustedError, is_credit_error, retryable_api_error
 from src.db.models import Application, Job
 from src.db.session import get_session
 from src.notifications.telegram import send_message
@@ -312,7 +312,7 @@ def _decode_part(payload: dict) -> str:
 
 def _classify_request_params(subject: str, sender: str, body: str) -> dict:
     """Build the Messages API request body for one email — shared by batch and sequential paths."""
-    params = {
+    return {
         "model": settings.claude_model,
         # Backstop only: Haiku 5.5 counts ~36% more tokens for the same text.
         "max_tokens": 1024,
@@ -321,10 +321,6 @@ def _classify_request_params(subject: str, sender: str, body: str) -> dict:
         "tool_choice": {"type": "tool", "name": "classify_email"},
         "messages": [{"role": "user", "content": f"From: {sender}\nSubject: {subject}\n\n{body}"}],
     }
-    # Haiku 5.5 rejects any non-default temperature with a 400.
-    if settings.claude_model.startswith("claude-haiku-4-5"):
-        params["temperature"] = 0
-    return params
 
 
 def _parse_classification(response) -> dict:
@@ -417,7 +413,7 @@ def _classify_email(subject: str, sender: str, body: str) -> dict:
     Retries up to 3 times on transient API errors (never on exhausted credits).
     Returns a dict with keys: category, company, job_title, summary, confident.
     """
-    response = _client.messages.create(**create_kwargs(_classify_request_params(subject, sender, body)))
+    response = _client.messages.create(**_classify_request_params(subject, sender, body))
     return _parse_classification(response)
 
 
