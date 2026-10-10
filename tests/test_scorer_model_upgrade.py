@@ -1,8 +1,12 @@
 """Unit tests for the Haiku 4.5 → 5.5 upgrade behaviour in the scorer and Gmail classifier."""
 
+import json
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
+
+import anthropic
+import httpx2
 
 from src.feedback import gmail_monitor
 from src.scoring import scorer
@@ -147,6 +151,52 @@ class GmailModelUpgradeTest(unittest.TestCase):
         self.assertEqual(result["category"], "recruiter_reply")
         self.assertFalse(result["confident"])
         self.assertEqual(result["company"], "")
+
+
+def _sdk_client(tool_name: str, tool_input: dict, sent: list) -> anthropic.Anthropic:
+    """Return a real SDK client whose transport records each request body and answers with one tool call."""
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        sent.append(json.loads(request.content))
+        return httpx2.Response(200, json={
+            "id": "msg_1", "type": "message", "role": "assistant", "model": HAIKU_45,
+            "content": [{"type": "tool_use", "id": "toolu_1", "name": tool_name, "input": tool_input}],
+            "stop_reason": "tool_use", "stop_sequence": None,
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        })
+    return anthropic.Anthropic(api_key="test", http_client=httpx2.Client(transport=httpx2.MockTransport(handler)))
+
+
+class SdkRollbackPathTest(unittest.TestCase):
+    """anthropic 1.x rejects a temperature keyword; the Haiku 4.5 direct-call paths must still send temperature 0."""
+
+    def test_scorer_direct_call_sends_temperature_zero(self):
+        sent = []
+        client = _sdk_client("score_job", {"score": 81, "reasoning": "fit", "visa_disqualified": False}, sent)
+        with patch.object(scorer, "_client", client), patch.object(scorer, "_HAIKU_45", True), \
+                patch.object(scorer, "_MODEL", HAIKU_45):
+            fields = scorer._score_one(JOB)
+        self.assertEqual(fields["score"], 81)
+        self.assertEqual(sent[0]["temperature"], 0)
+
+    def test_gmail_direct_call_sends_temperature_zero(self):
+        sent = []
+        client = _sdk_client("classify_email", {
+            "category": "confirmation", "company": "Acme", "job_title": "Engineer",
+            "summary": "Thanks for applying", "confident": True,
+        }, sent)
+        with patch.object(gmail_monitor, "_client", client), \
+                patch.object(gmail_monitor.settings, "claude_model", HAIKU_45):
+            result = gmail_monitor._classify_email("subj", "a@b.com", "body")
+        self.assertEqual(result["category"], "confirmation")
+        self.assertEqual(sent[0]["temperature"], 0)
+
+    def test_haiku_55_direct_call_sends_no_temperature(self):
+        sent = []
+        client = _sdk_client("score_job", {"score": 70, "reasoning": "fit", "visa_disqualified": False}, sent)
+        with patch.object(scorer, "_client", client), patch.object(scorer, "_HAIKU_45", False), \
+                patch.object(scorer, "_MODEL", HAIKU_55):
+            scorer._score_one(JOB)
+        self.assertNotIn("temperature", sent[0])
 
 
 if __name__ == "__main__":

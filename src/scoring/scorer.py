@@ -13,7 +13,7 @@ from tenacity import (
 
 from config.settings import settings
 from data.companies import get_tier
-from src.anthropic_guard import CreditExhaustedError, is_credit_error, retryable_api_error
+from src.anthropic_guard import CreditExhaustedError, create_kwargs, is_credit_error, retryable_api_error
 from src.notifications.telegram import send_message
 from src.scoring.prompts import SCORING_TOOL, SCORING_TOOL_STRICT, build_system_prompt, build_user_prompt
 
@@ -318,5 +318,5 @@ def _score_one(job: dict) -> dict:
     Retries up to 3 times on rate limit or transient API errors with exponential backoff.
     Description truncation is handled inside build_user_prompt (head + tail).
     """
-    response = _client.messages.create(**_request_params(job))
+    response = _client.messages.create(**create_kwargs(_request_params(job)))
     return _parse_response(response)

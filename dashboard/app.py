@@ -321,7 +321,7 @@ with tab_applied:
     })
     if funnel_df["Count"].sum() > 0:
         fig = px.funnel(funnel_df, x="Count", y="Stage")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("No applications yet.")
 
@@ -364,7 +364,7 @@ with tab_applied:
         st.dataframe(
             df,
             column_config={"url": st.column_config.LinkColumn("Link", display_text="Open")},
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     else:
@@ -411,7 +411,7 @@ with tab_all:
         st.dataframe(
             df_all[mask][display_cols].reset_index(drop=True),
             column_config={"url": st.column_config.LinkColumn("Link", display_text="Open")},
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
         st.caption(f"Showing {mask.sum()} of {len(df_all)} jobs")
@@ -437,7 +437,7 @@ with tab_analytics:
                                annotation_text="High match (85)")
             fig_hist.add_vline(x=75, line_dash="dash", line_color="orange",
                                annotation_text="Apply queue (75)")
-            st.plotly_chart(fig_hist, use_container_width=True)
+            st.plotly_chart(fig_hist, width="stretch")
         else:
             st.info("No scored jobs yet.")
 
@@ -453,7 +453,7 @@ with tab_analytics:
             df_time["date"] = pd.to_datetime(df_time["date"])
             fig_line = px.line(df_time, x="date", y="count",
                                labels={"date": "Date", "count": "Applications"})
-            st.plotly_chart(fig_line, use_container_width=True)
+            st.plotly_chart(fig_line, width="stretch")
         else:
             st.info("No applications over time yet.")
 
@@ -468,7 +468,7 @@ with tab_analytics:
         fig_src = px.bar(df_src, x="source", y="count",
                          labels={"source": "Source", "count": "Jobs"},
                          color_discrete_sequence=["#4f8bf9"])
-        st.plotly_chart(fig_src, use_container_width=True)
+        st.plotly_chart(fig_src, width="stretch")
     else:
         st.info("No source data yet.")
 
@@ -496,6 +496,6 @@ with tab_pipeline:
                 "scored": st.column_config.NumberColumn("Scored"),
                 "error": st.column_config.TextColumn("Error"),
             },
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )

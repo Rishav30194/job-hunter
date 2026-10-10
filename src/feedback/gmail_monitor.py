@@ -22,7 +22,7 @@ import anthropic
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from config.settings import settings
-from src.anthropic_guard import CreditExhaustedError, is_credit_error, retryable_api_error
+from src.anthropic_guard import CreditExhaustedError, create_kwargs, is_credit_error, retryable_api_error
 from src.db.models import Application, Job
 from src.db.session import get_session
 from src.notifications.telegram import send_message
@@ -417,7 +417,7 @@ def _classify_email(subject: str, sender: str, body: str) -> dict:
     Retries up to 3 times on transient API errors (never on exhausted credits).
     Returns a dict with keys: category, company, job_title, summary, confident.
     """
-    response = _client.messages.create(**_classify_request_params(subject, sender, body))
+    response = _client.messages.create(**create_kwargs(_classify_request_params(subject, sender, body)))
     return _parse_classification(response)
 
 

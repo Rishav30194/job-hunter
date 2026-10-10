@@ -1,4 +1,4 @@
-"""Shared detection of Anthropic API credit exhaustion.
+"""Shared Anthropic API helpers: credit-exhaustion detection and request shaping.
 
 When the account balance hits zero, every request fails with an
 invalid_request_error whose message mentions the credit balance. Callers must
@@ -27,3 +27,16 @@ def retryable_api_error(exc: BaseException) -> bool:
         isinstance(exc, (anthropic.RateLimitError, anthropic.APIStatusError))
         and not is_credit_error(exc)
     )
+
+
+def create_kwargs(params: dict) -> dict:
+    """Return batch-shaped request params as keyword arguments for messages.create().
+
+    anthropic 1.x removed `temperature` from messages.create() (a TypeError), but
+    the API still accepts it and the Haiku 4.5 rollback path sends temperature 0,
+    so it travels in extra_body. Batch params forward the key as-is.
+    """
+    kwargs = dict(params)
+    if "temperature" in kwargs:
+        kwargs["extra_body"] = {"temperature": kwargs.pop("temperature")}
+    return kwargs
