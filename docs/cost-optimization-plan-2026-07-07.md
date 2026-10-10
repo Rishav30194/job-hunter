@@ -1,6 +1,6 @@
 # API Cost Optimization Plan — Round 2
 
-**Written:** 2026-07-07 · **Status:** planned, not implemented
+**Written:** 2026-07-07 · **Status:** implemented 2026-07-15 (Change 4 skipped); results in `docs/implementation-phases.md`
 **Goal:** cut Claude API spend from ~$17–20/mo to ~$10–12/mo with zero quality loss.
 **Branch:** `chore/api-cost-round2` → PR to `main` → deploy to VPS.
 
