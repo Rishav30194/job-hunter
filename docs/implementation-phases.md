@@ -537,11 +537,10 @@ curl http://localhost:8501                 # dashboard responds 200
 
 ## Open Action Items (next session)
 
-1. **Switch to Haiku 5.5.** After the switch PR is merged and deployed, add `CLAUDE_MODEL=claude-haiku-5-5`, `AUTO_APPLY_THRESHOLD=70`, and `HIGH_MATCH_THRESHOLD=80` to the VPS `.env`, restart `scheduler`, and monitor for 3 days (Phase 4 of `docs/haiku-5-5-upgrade-plan-2026-10-10.md`).
+1. **Monitor the Haiku 5.5 switch for 3 days** (live since 2026-10-10 23:02 UTC). Check each run's batch usage log line, refusals, and jobs queued per day against the Phase 4 rollback triggers in `docs/haiku-5-5-upgrade-plan-2026-10-10.md`. The first run after the switch had no new jobs, so the first production scoring is the 2026-10-11 ~05:00 UTC run.
 2. **Upgrade dependencies to the latest versions.** See "Post-Launch Fix — Pinned Dependencies (2026-10-10)".
-3. **Top up API credits.** $4.30 left on 2026-10-10, enough until about 2026-10-21. The credit guard alerts on Telegram if they run out.
 
-Closed: the Gmail refresh token was made permanent on 2026-06-09 (OAuth app published), and the user decided against off-site backup automation; the nightly on-VPS backup stays as it is.
+Closed: API credits topped up on 2026-10-10. The Gmail refresh token was made permanent on 2026-06-09 (OAuth app published), and the user decided against off-site backup automation; the nightly on-VPS backup stays as it is.
 
 ## Post-Launch Improvements (2026-06-09)
 
@@ -611,4 +610,5 @@ Per Phase 3 of `docs/haiku-5-5-upgrade-plan-2026-10-10.md` (branch `feature/haik
 - [x] **Haiku 5.5 request shape** — a 12,000-character description window (9,000 + 3,000) and the strict scoring tool, chosen only when `CLAUDE_MODEL` is Haiku 5.5. Haiku 4.5 keeps its original request, so rollback is a `.env` change. The cache pre-warm sends the same tool as the requests. `scripts/eval_scoring.py` now uses the production tool and window.
 - [x] **Threshold** — 70 on Haiku 5.5 (it scores about 14 points lower): 9 of 14 "would apply" and 0 of 18 "wouldn't apply" jobs queued, about 19.5 a day before the cap. Set through `.env`; `.env.example` documents the Haiku 5.5 values.
 - [x] 6 new tests (71 total). Live check: 3 jobs through the production scorer on Haiku 5.5, 3 of 3 scored, every entry read the cache.
-- [ ] Deploy, `.env` change, and 3-day monitoring (Phase 4).
+- [x] Merged (PR #15) and deployed 2026-10-10. The VPS `.env` now sets `CLAUDE_MODEL=claude-haiku-5-5`, `AUTO_APPLY_THRESHOLD=70`, and `HIGH_MATCH_THRESHOLD=80` (edited in place; the previous file is kept as `.env.bak-20261010` on the VPS). Recreating the containers (`docker compose up -d --force-recreate scheduler dashboard`) is what reloads `.env`; a plain restart does not.
+- [ ] 3-day monitoring (Phase 4).
