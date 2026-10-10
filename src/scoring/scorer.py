@@ -22,10 +22,10 @@ logger = logging.getLogger(__name__)
 # Module-level singletons — created once on import, reused across all pipeline runs.
 _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
-# System prompt as a content block with cache_control. Prompt caching is active on
-# claude-haiku-4-5 as long as the system+tools prefix stays above the model's
-# 4,096-token cacheable minimum — prompts.py keeps the prefix above that threshold
-# deliberately; below it the marker silently no-ops and every call pays full price.
+# System prompt as a content block with cache_control. Caching only works while
+# the prefix stays above the model's cacheable minimum: 4,096 tokens on Haiku 4.5
+# (prompts.py keeps it above that deliberately) and 512 on Haiku 5.5. Below it the
+# marker silently no-ops and every call pays full price.
 _SYSTEM_CONTENT: list[dict] = [
     {
         "type": "text",
@@ -36,13 +36,21 @@ _SYSTEM_CONTENT: list[dict] = [
 
 _TIER_LABELS = {1: "Tier-1", 2: "Tier-2", 3: "Tier-3"}
 
-_MODEL = "claude-haiku-4-5-20251001"
+_MODEL = settings.claude_model
+
+# Haiku 5.5 rejects any non-default temperature with a 400; Haiku 4.5 keeps
+# temperature 0 so a rollback scores exactly as before the upgrade.
+_ACCEPTS_TEMPERATURE = _MODEL.startswith("claude-haiku-4-5")
 
 # Batch polling cadence and ceiling. Most batches finish well under an hour;
 # the pipeline runs every 6 hours, so a 2-hour ceiling leaves ample slack
 # before the sequential fallback kicks in.
 _BATCH_POLL_SECONDS = 30
 _BATCH_TIMEOUT_SECONDS = 2 * 60 * 60
+
+_USAGE_FIELDS = (
+    "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens",
+)
 
 _DISQUALIFIED_FIELDS: dict = {
     "score": 0,
@@ -182,9 +190,11 @@ def _score_batch(jobs_by_index: dict[int, dict]) -> dict[int, dict]:
 
     scored: dict[int, dict] = {}
     credit_errors = 0
+    usage_totals: dict[str, int] = dict.fromkeys(_USAGE_FIELDS, 0)
     for entry in _client.messages.batches.results(batch.id):
         index = int(entry.custom_id.removeprefix("job-"))
         if entry.result.type == "succeeded":
+            _add_usage(usage_totals, entry.result.message.usage)
             try:
                 scored[index] = _parse_response(entry.result.message)
             except Exception:
@@ -202,6 +212,7 @@ def _score_batch(jobs_by_index: dict[int, dict]) -> dict[int, dict]:
             )
 
     logger.info("Batch %s complete: %d/%d scored", batch.id, len(scored), len(requests))
+    logger.info("Batch %s usage (%s): %s", batch.id, _MODEL, usage_totals)
     if credit_errors:
         # Retrying sequentially is guaranteed to fail the same way — abort,
         # carrying whatever the batch managed to score before credits ran out.
@@ -212,19 +223,42 @@ def _score_batch(jobs_by_index: dict[int, dict]) -> dict[int, dict]:
 
 def _request_params(job: dict) -> dict:
     """Build the Messages API request body for one job — shared by batch and sequential paths."""
-    return {
+    params = {
         "model": _MODEL,
-        "max_tokens": 512,
-        "temperature": 0,
+        # A backstop the model never sees: Haiku 5.5 counts ~36% more tokens
+        # for the same text and writes longer reasoning (~200 tokens observed).
+        "max_tokens": 1024,
         "system": _SYSTEM_CONTENT,
         "tools": [SCORING_TOOL],
         "tool_choice": {"type": "tool", "name": "score_job"},
         "messages": [{"role": "user", "content": build_user_prompt(job)}],
     }
+    if _ACCEPTS_TEMPERATURE:
+        params["temperature"] = 0
+    return params
+
+
+def _add_usage(totals: dict[str, int], usage) -> None:
+    """Accumulate one response's token meters into the batch totals."""
+    for field in _USAGE_FIELDS:
+        totals[field] += getattr(usage, field, None) or 0
 
 
 def _parse_response(response) -> dict:
-    """Extract the scoring fields from a Messages API response. Raises on malformed output."""
+    """Extract the scoring fields from a Messages API response. Raises on malformed output.
+
+    A refusal returns final fields rather than raising: a job left unscored is
+    re-fetched and re-billed every cycle, and a refusal repeats on every retry.
+    """
+    if response.stop_reason == "refusal":
+        details = getattr(response, "stop_details", None)
+        category = getattr(details, "category", None) or "unspecified"
+        logger.warning("Model declined to score a job (category: %s)", category)
+        return {
+            "score": 0,
+            "score_reasoning": f"Declined by model ({category})",
+            "visa_disqualified": False,
+        }
     if response.stop_reason != "tool_use":
         raise ValueError(f"Expected stop_reason='tool_use', got {response.stop_reason!r}")
 

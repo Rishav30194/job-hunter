@@ -585,3 +585,15 @@ Branch `fix/credit-guard-and-gmail-batching`, motivated by the 2026-07-16 credit
 - **Unscored jobs are never persisted** — `run_pipeline` drops score=None jobs before routing/persist so the next cycle re-fetches and scores them. This also fixes a pre-existing silent-loss bug for any permanently failed scoring.
 - **Gmail batch classification (~$1–1.5/mo)** — emails are classified in one Message Batch (50% token price) after the noise/empty gather phase; per-email sequential fallback for batch misses; on credit exhaustion emails stay unread and retry next cycle.
 - 8 new tests (45 total).
+
+## Post-Launch Improvements — Queue Quality and Model Setting (2026-10-10)
+
+Per `docs/haiku-5-5-upgrade-plan-2026-10-10.md` (branch `feature/haiku-5-5-upgrade`). Measured on 1,327 queued jobs since 2026-07-16: the user applied to only 46.8%.
+
+- **Missed sponsorship rejections caught** — 16 explicit wordings added to `VISA_REJECTION_PHRASES`, each taken from a real skipped job ("will not provide sponsorship", "not eligible for visa sponsorship", "generally does not sponsor"…). Matching now strips markdown escapes and collapses whitespace. Audited over 8,521 non-disqualified jobs from the last 60 days: 479 newly matched, every inspected match a genuine rejection. Removes 74 of 706 past skips.
+- **JSearch repost-only links dropped** — jobs whose only apply link is a repost/scraper site (bebee, jobleads, trabajo, learn4good, and others) never reach scoring. The user skipped 182 of 184 such jobs. Removes 182 past skips.
+- Together: 251 of 706 past skips removed, 7 of 621 applied jobs removed (5 of them say they will not sponsor). Queue hit rate on past data: 46.8% → 57.4%. Both filters also skip the scoring API call.
+- **Model setting (inactive)** — `CLAUDE_MODEL` (default Haiku 4.5, so behaviour is unchanged) for scoring and email classification; Haiku 5.5 requests omit `temperature`; refusals are final in the scorer and flagged for manual review in Gmail; `max_tokens` 1,024 backstop; per-batch usage logging. Switching to Haiku 5.5 waits on the user's disagreement review (eval: Haiku 5.5 scores ~14 points lower and needs a recalibrated threshold).
+- **Eval tooling** — `scripts/export_eval_set.py` (read-only labelled sample from the VPS) and `scripts/eval_scoring.py` (scores the frozen set per model configuration via the Batches API and reports ranking, queue, visa, and cost metrics). Eval data lives in the gitignored `eval/`.
+- 17 new tests (65 total). Live checks: full `fetch_jobs()` run (961 jobs, all with links) and a 3-job batch through the production scorer on the default model.
+
