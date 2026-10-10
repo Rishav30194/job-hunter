@@ -18,7 +18,7 @@ beyond the apply button itself.
 | Zero stale listings | Hard 48-hour cutoff on all fetched jobs |
 | Minimal human time | Apply Queue shows only jobs scored at or above the threshold; one click to open and apply |
 | Maximum coverage | 8 search terms × Indeed + JSearch (Google for Jobs) per run |
-| Accurate scoring | Claude Haiku scores fit (not desirability) — tier and salary are neutral |
+| Accurate scoring | Claude Haiku 5.5 scores fit (not desirability) — tier and salary are neutral |
 | Visa safety | "No sponsorship" / US-citizenship / security-clearance phrases → auto-discard, persisted to DB |
 | No repeat rejections | 30-day cooldown after 4+ rejections from a company (tier-1/2 exempt) |
 | Inbox awareness | Gmail monitor classifies replies, updates funnel, alerts on action items |

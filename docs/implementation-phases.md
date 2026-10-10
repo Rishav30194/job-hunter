@@ -538,7 +538,8 @@ curl http://localhost:8501                 # dashboard responds 200
 ## Open Action Items (next session)
 
 1. **Monitor the Haiku 5.5 switch for 3 days** (live since 2026-10-10 23:02 UTC). Check each run's batch usage log line, refusals, and jobs queued per day against the Phase 4 rollback triggers in `docs/haiku-5-5-upgrade-plan-2026-10-10.md`. The first run after the switch had no new jobs, so the first production scoring is the 2026-10-11 ~05:00 UTC run.
-2. **Deploy the dependency upgrade** (PR from `chore/upgrade-dependencies`), then confirm the scheduler starts and the next run's scoring batch succeeds.
+2. **Optional: score borderline jobs twice.** Haiku 5.5 has no temperature control; between two eval runs 15 of 282 jobs crossed 70. Averaging two scores for jobs near the threshold (about 62–78) would cut that, for pennies a month. Measure it on the eval set first.
+3. **Optional: remove `playwright`.** Unused since auto-apply was removed on 2026-07-15; removal needs approval.
 
 Closed: API credits topped up on 2026-10-10. The Gmail refresh token was made permanent on 2026-06-09 (OAuth app published), and the user decided against off-site backup automation; the nightly on-VPS backup stays as it is.
 
@@ -607,7 +608,7 @@ Per Phase 3 of `docs/haiku-5-5-upgrade-plan-2026-10-10.md` (branch `feature/haik
 
 - [x] **Disagreement review** — the user rated 40 jobs blind, where Haiku 4.5 and Haiku 5.5 disagree most. On 25 decisive ratings the user agreed with Haiku 5.5 21 times and Haiku 4.5 4 times; Haiku 5.5 also caught 3 no-sponsorship jobs Haiku 4.5 scored 42–87.
 - [x] **Seniority rule** — a bare minimum ("2+ years", "3+ years") on a mid-level or senior role is no longer an overqualification penalty; entry-level roles keep the heavy penalty. Ranking of the user's ratings: 0.97 (0.95–0.96 before, 0.43 on Haiku 4.5).
-- [x] **Haiku 5.5 request shape** — a 12,000-character description window (9,000 + 3,000) and the strict scoring tool, chosen only when `CLAUDE_MODEL` is Haiku 5.5. Haiku 4.5 keeps its original request, so rollback is a `.env` change. The cache pre-warm sends the same tool as the requests. `scripts/eval_scoring.py` now uses the production tool and window.
+- [x] **Haiku 5.5 request shape** — a 12,000-character description window (9,000 + 3,000) and the strict scoring tool, chosen only when `CLAUDE_MODEL` is Haiku 5.5. Haiku 4.5 kept its original request, so rollback was a `.env` change (superseded by PR #17: one Haiku 5.5 request path, rollback by redeploying `c88a55e`). The cache pre-warm sends the same tool as the requests. `scripts/eval_scoring.py` now uses the production tool and window.
 - [x] **Threshold** — 70 on Haiku 5.5 (it scores about 14 points lower): 9 of 14 "would apply" and 0 of 18 "wouldn't apply" jobs queued, about 19.5 a day before the cap. Set through `.env`; `.env.example` documents the Haiku 5.5 values.
 - [x] 6 new tests (71 total). Live check: 3 jobs through the production scorer on Haiku 5.5, 3 of 3 scored, every entry read the cache.
 - [x] Merged (PR #15) and deployed 2026-10-10. The VPS `.env` now sets `CLAUDE_MODEL=claude-haiku-5-5`, `AUTO_APPLY_THRESHOLD=70`, and `HIGH_MATCH_THRESHOLD=80` (edited in place; the previous file is kept as `.env.bak-20261010` on the VPS). Recreating the containers (`docker compose up -d --force-recreate scheduler dashboard`) is what reloads `.env`; a plain restart does not.
@@ -615,7 +616,7 @@ Per Phase 3 of `docs/haiku-5-5-upgrade-plan-2026-10-10.md` (branch `feature/haik
 
 ## Dependency Upgrade (2026-10-10)
 
-Branch `chore/upgrade-dependencies`. Every direct dependency moved to its latest release and stays pinned with `==`.
+PR #17 (branch `chore/upgrade-dependencies`), merged and deployed 2026-10-10. Every direct dependency moved to its latest release and stays pinned with `==`.
 
 - [x] **anthropic 0.105.2 → 1.13.0** (per the SDK's 0.x → 1.x migration guide). 1.x removed `temperature` from `messages.create()` (a `TypeError`); only the Haiku 4.5 path sent it, and that path is gone (next item). `httpx` stays for Telegram, JSearch, and the ATS boards; `httpx2` (the SDK's HTTP client, the maintained fork of `httpx` published by Pydantic) is declared because the tests import it.
 - [x] **SQLAlchemy 2.0.50 → 2.1.4, `psycopg2-binary` → `psycopg[binary]` 3.3.6.** SQLAlchemy 2.1 maps `postgresql://` to psycopg 3, so `DATABASE_URL` is unchanged.

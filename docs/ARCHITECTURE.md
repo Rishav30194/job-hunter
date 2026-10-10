@@ -28,9 +28,9 @@
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                    LLM SCORING ENGINE                              │   │
-│  │  Claude Haiku — scores each job 0–100 via Message Batch (50% $)   │   │
+│  │  Claude Haiku 5.5 — scores each job 0–100 via Batch (50% $)       │   │
 │  │  Pre-disqualified (visa) jobs skip API call — score=0 directly    │   │
-│  │  Cached system prompt (>4,096 tok) — prefix reads at 1/10 price   │   │
+│  │  Cached system prompt (~6.2K tok) — prefix reads at 1/10 price    │   │
 │  │  Rubric: tech stack · seniority fit · domain experience           │   │
 │  │  Company tier and salary do NOT affect score                      │   │
 │  │  Returns: score · reasoning · visa_disqualified flag              │   │
@@ -38,8 +38,8 @@
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                      DECISION ROUTER                               │   │
-│  │  score ≥ 75  ──► Apply Queue (cap: 20/day; overflow → archived)   │   │
-│  │  score < 75  ──► Archived                                         │   │
+│  │  score ≥ 70  ──► Apply Queue (cap: 20/day; overflow → archived)   │   │
+│  │  score < 70  ──► Archived                                         │   │
 │  │  visa_disqualified ──► Disqualified (persisted, deduped next run) │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
@@ -60,7 +60,7 @@
 │         │                                 │                              │
 │  ┌──────▼──────────────────────────┐  ┌───▼──────────────────────────┐   │
 │  │  STREAMLIT DASHBOARD            │  │   TELEGRAM ALERTS            │   │
-│  │  https://jobhunter.mooo.com     │  │   High-match jobs (≥85)      │   │
+│  │  https://jobhunter.mooo.com     │  │   High-match jobs (≥80)      │   │
 │  │  Basic auth (htpasswd)          │  │   Run summary                │   │
 │  │  Metrics · Apply Queue ·        │  │   Daily queue digest (09:00) │   │
 │  │  Applied · All Jobs ·           │  │   Rejection / assessment /   │   │
@@ -79,7 +79,7 @@ Three sources merged before deduplication:
 - **JSearch (RapidAPI)** — 1 call/run, rotates across 4 queries (one per 6h slot) to vary coverage. ~10 Google for Jobs results per run. Capped at 1 call/run to stay within 200 req/month free tier. A job whose only apply link is a repost/scraper site (`_JSEARCH_REPOST_DOMAINS`: bebee, jobleads, trabajo, learn4good, and others) is dropped before scoring: the user skipped 182 of 184 such jobs. On the free tier JSearch returns one non-direct link per job, so there is no better link to switch to; a direct employer link is preferred when one exists.
 - **ATS boards** (`src/ingestion/ats_boards.py`) — direct polling of 25 target companies' Greenhouse/Lever/Ashby public job-board APIs (free, unauthenticated JSON — no scraping, no bot detection; tokens in `data/ats_boards.py`, all verified live). Gets postings on day one instead of days later via Indeed. Per-company isolation: a 404/renamed token logs a warning and never breaks the others. Titles are pre-filtered to Java/backend/software-engineer roles and clearly non-US locations are dropped before the shared hard filters run. ATS jobs are exempt from the 48h age filter (postings stay open for weeks); dedup by content hash still guarantees each is scored only once.
 
-Excluded platforms: Glassdoor (400 errors), ZipRecruiter (403 bot block), LinkedIn (silent rate limits), native Google Jobs (jobspy cursor broken in v1.1.82).
+Excluded platforms: Glassdoor (400 errors), ZipRecruiter (403 bot block), LinkedIn (silent rate limits), native Google Jobs (jobspy cursor broken in v1.1.82; not re-tested on 1.3.0, and not needed while the queue fills).
 
 Hard pre-filters: age ≤ 48h, salary ≥ $100K, intern/junior title keywords, hard-excluded companies.
 Visa-rejected jobs (explicit "no sponsorship" phrases, US-citizenship mandates, or security-clearance requirements) are **tagged** `visa_disqualified=True` and kept — they pass through dedup and are persisted as `disqualified` so future runs skip them via the content hash. The phrase list matches only unambiguous rejections: bare "us citizen" (E-Verify boilerplate) and "must be authorized to work" (an H1B holder *is* authorized) were removed after killing 60+ good jobs in production — those descriptions now fall through to LLM scoring, whose rubric handles the nuance. The list also holds 16 explicit wordings found in skipped queue jobs ("will not provide sponsorship", "not eligible for visa sponsorship", "generally does not sponsor", "without the need for employer sponsorship", and so on); these sat in the middle of long descriptions, outside the scorer's window. Matching runs on text with markdown escapes removed and whitespace collapsed, so `employment\-based` or a line break cannot hide a phrase.
@@ -106,7 +106,7 @@ Gmail API (google-api-python-client) polls unread emails from the last 48h every
 
 ### `src/notifications/telegram.py`
 httpx Telegram Bot API. Three notification types:
-- **High-match alert** — fires when jobs scoring ≥85 are queued this run (top 10 with links)
+- **High-match alert** — fires when jobs scoring at or above `HIGH_MATCH_THRESHOLD` (default 80) are queued this run (top 10 with links)
 - **Run summary** — fired when new jobs are found or an error occurred
 - **Daily queue digest** — fires at 09:00 UTC if any jobs are waiting in apply queue
 
@@ -117,7 +117,7 @@ APScheduler BlockingScheduler. Two jobs:
 
 ### `dashboard/app.py`
 Streamlit dashboard at https://jobhunter.mooo.com. Five tabs:
-- **Apply Queue** — jobs scored ≥75, expandable cards with Open & Apply link, Mark Applied, Skip, and Notes field
+- **Apply Queue** — jobs scored at or above `AUTO_APPLY_THRESHOLD` (default 70), expandable cards with Open & Apply link, Mark Applied, Skip, and Notes field
 - **Applied** — application funnel chart + status update buttons (Phone Screen / Interview / Offer / Rejected) for in-progress applications
 - **All Jobs** — searchable/filterable full table with score range slider
 - **Analytics** — score distribution histogram, applications over time, jobs by source
@@ -193,7 +193,7 @@ fetch_jobs()
                                             (50% price; pre-disqualified skip API;
                                              sequential fallback on batch failure)
                              └─► route_jobs()
-                                  ├─► queued_apply  → DB + Telegram alert (if ≥85)
+                                  ├─► queued_apply  → DB + Telegram alert (if ≥80)
                                   ├─► archived      → DB
                                   └─► disqualified  → DB (prevents re-fetch next run)
 

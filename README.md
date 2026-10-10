@@ -40,7 +40,7 @@ Every pipeline run
 ## Stack
 
 - **Python 3.12** — APScheduler, SQLAlchemy, Alembic, Pydantic-settings
-- **Claude Haiku** (Anthropic) — job scoring, email classification
+- **Claude Haiku 5.5** (Anthropic) — job scoring, email classification
 - **jobspy** — Indeed scraping
 - **JSearch** (RapidAPI) — Google for Jobs aggregation
 - **PostgreSQL** — state store (jobs, applications, pipeline runs)
@@ -127,12 +127,12 @@ htpasswd -c /etc/nginx/.htpasswd youruser    # basic auth
 
 ## Scoring Rubric
 
-Claude Haiku receives the candidate's resume baked into the system prompt and evaluates each job description on three dimensions. Scoring runs through the Message Batches API (50% of standard token price — the 6-hour cadence absorbs batch latency), with a sequential fallback if a batch fails. The system prompt is kept above the model's 4,096-token cache minimum so repeat calls read it at one-tenth input price.
+Claude Haiku 5.5 receives the candidate's resume baked into the system prompt and evaluates each job description on three dimensions. Scoring runs through the Message Batches API (50% of standard token price — the 6-hour cadence absorbs batch latency), with a sequential fallback if a batch fails. The cached system prompt (~6,200 tokens) is far above Claude Haiku 5.5's 512-token cache minimum, so repeat calls read it at one-tenth input price.
 
 | Dimension | Weight | What it measures |
 |-----------|--------|-----------------|
 | Tech stack match | 50% | Language, frameworks, tooling overlap |
-| Seniority fit | 30% | Required years vs target band (5–10 yrs); penalty for 10+ yr requirements |
+| Seniority fit | 30% | Required years vs target band (5–8 yrs ideal); penalty for 10+ yr and entry-level roles, none for a bare minimum such as "3+ years" |
 | Domain experience | 20% | Finance, healthcare, enterprise SaaS background |
 
 Company tier and salary are passed as context but **do not affect the score**. The rubric scores fit, not desirability.
