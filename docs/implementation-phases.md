@@ -537,14 +537,11 @@ curl http://localhost:8501                 # dashboard responds 200
 
 ## Open Action Items (next session)
 
-1. **Gmail — make the refresh token permanent (free).** Google Cloud Console →
-   APIs & Services → OAuth consent screen → **Publish App** (unverified is fine for
-   personal use). Then re-run `PYTHONPATH=. venv/bin/python src/feedback/setup_gmail.py`
-   locally, copy the new `GOOGLE_REFRESH_TOKEN` into the VPS `.env`, restart the
-   scheduler. Until then the token expires ~weekly (Testing-mode limit); the
-   Telegram auth-failure alert will fire when it does.
-2. **Backups — Q&A.** Walk through restore procedure, off-site automation options,
-   and retention for `deploy/backup.sh` before changing anything.
+1. **Haiku 5.5 disagreement review.** The user reviews about 40 jobs where Haiku 4.5 and Haiku 5.5 disagree most; the result decides whether to switch models and what threshold to use (Phases 3–4 of `docs/haiku-5-5-upgrade-plan-2026-10-10.md`).
+2. **Upgrade dependencies to the latest versions.** See "Post-Launch Fix — Pinned Dependencies (2026-10-10)".
+3. **Top up API credits.** $4.30 left on 2026-10-10, enough until about 2026-10-21. The credit guard alerts on Telegram if they run out.
+
+Closed: the Gmail refresh token was made permanent on 2026-06-09 (OAuth app published), and the user decided against off-site backup automation; the nightly on-VPS backup stays as it is.
 
 ## Post-Launch Improvements (2026-06-09)
 
@@ -588,7 +585,7 @@ Branch `fix/credit-guard-and-gmail-batching`, motivated by the 2026-07-16 credit
 
 ## Post-Launch Improvements — Queue Quality and Model Setting (2026-10-10)
 
-Per `docs/haiku-5-5-upgrade-plan-2026-10-10.md` (branch `feature/haiku-5-5-upgrade`). Measured on 1,327 queued jobs since 2026-07-16: the user applied to only 46.8%.
+Per `docs/haiku-5-5-upgrade-plan-2026-10-10.md` (PR #12, merged and deployed 2026-10-10). Measured on 1,327 queued jobs since 2026-07-16: the user applied to only 46.8%.
 
 - **Missed sponsorship rejections caught** — 16 explicit wordings added to `VISA_REJECTION_PHRASES`, each taken from a real skipped job ("will not provide sponsorship", "not eligible for visa sponsorship", "generally does not sponsor"…). Matching now strips markdown escapes and collapses whitespace. Audited over 8,521 non-disqualified jobs from the last 60 days: 479 newly matched, every inspected match a genuine rejection. Removes 74 of 706 past skips.
 - **JSearch repost-only links dropped** — jobs whose only apply link is a repost/scraper site (bebee, jobleads, trabajo, learn4good, and others) never reach scoring. The user skipped 182 of 184 such jobs. Removes 182 past skips.
@@ -602,5 +599,5 @@ Per `docs/haiku-5-5-upgrade-plan-2026-10-10.md` (branch `feature/haiku-5-5-upgra
 
 Deploying PR #12 rebuilt the image, and the `>=`-only `requirements.txt` pulled new major versions (SQLAlchemy 2.1, anthropic 1.x, pandas 3, plotly 7). SQLAlchemy 2.1 defaults `postgresql://` to the `psycopg` 3 driver, which is not installed, so the scheduler crash-looped on startup.
 
-- [x] `requirements.txt` pinned with `==` to the versions the tests and live checks ran on (local venv). Clean install verified in `python:3.12-slim` on the VPS; `pip check` clean.
+- [x] PR #13, merged and deployed 2026-10-10 (scheduler and dashboard were down about 5 minutes). `requirements.txt` pinned with `==` to the versions the tests and live checks ran on (local venv). Clean install verified in `python:3.12-slim` on the VPS; `pip check` clean.
 - [ ] **Upgrade to the latest versions** as its own branch: bump one major at a time (SQLAlchemy 2.1 with `psycopg` 3 or a `postgresql+psycopg2://` URL, anthropic 1.x per its migration guide, pandas 3 and plotly 7 for the dashboard, python-jobspy 1.3), run the tests and a live fetch and scorer batch after each, then deploy.

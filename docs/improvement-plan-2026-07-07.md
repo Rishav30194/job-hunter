@@ -1,6 +1,6 @@
 # Improvement Plan — Codebase Review Findings
 
-**Written:** 2026-07-07 · **Status:** planned, not implemented
+**Written:** 2026-07-07 · **Status:** implemented 2026-07-15 (Change 6 deferred); results in `docs/implementation-phases.md`
 **Source:** full codebase review + production DB verification on the VPS (2026-07-07/08)
 **Companion doc:** `docs/cost-optimization-plan-2026-07-07.md` (API cost round 2 — separate branch/PR)
 **Branch for this work:** `fix/visa-prefilter-and-improvements` → PR to `main` → deploy to VPS.

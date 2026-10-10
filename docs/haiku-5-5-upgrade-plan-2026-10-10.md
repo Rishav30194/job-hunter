@@ -1,8 +1,8 @@
 # Haiku 5.5 upgrade plan: lower cost, same or better picks
 
-**Written:** 2026-10-10 · **Status:** Phases 0–2 done. Phases 1b, 1c, and the inactive Phase 2 code shipped 2026-10-10. The model switch waits on the disagreement review.
+**Written:** 2026-10-10 · **Status:** Phases 0–2 done. Phases 1b, 1c, and the inactive Phase 2 code merged (PR #12) and deployed 2026-10-10. The model switch waits on the disagreement review.
 **Goal:** move job scoring and email classification from Claude Haiku 4.5 to Claude Haiku 5.5. Cut API spend, and use part of the savings to make the daily top 20 better. Nothing reaches production until an eval shows the new configuration ranks jobs at least as well as the current one.
-**Branch for this work:** `feature/haiku-5-5-upgrade` → PR to `main` → deploy to the VPS.
+**Branch for this work:** `feature/haiku-5-5-upgrade`, merged as PR #12. Phases 3–4 need a new branch.
 
 Source for model facts: the Claude API reference bundled with Claude Code, last updated 2026-10-06. Any line marked **[verify]** has not been confirmed against a live API call yet. Phase 0 confirms each one before code depends on it.
 
@@ -425,7 +425,7 @@ Start these only if the data from Phases 3–4 supports them.
 | Phase 3 | About 30 minutes of your time on the disagreement review |
 | Phase 4 | PR merge, VPS deploy, `.env` change |
 
-No changes to `requirements.txt`, `Dockerfile`, or `docker-compose.yml`. The installed SDK (`anthropic` 0.105.2) accepts the model ID as a plain string.
+The plan needed no changes to `requirements.txt`, `Dockerfile`, or `docker-compose.yml`; the installed SDK (`anthropic` 0.105.2) accepts the model ID as a plain string. The deploy did need one: the rebuild pulled unpinned major versions and broke startup, so PR #13 pinned `requirements.txt` to the tested versions (see `docs/implementation-phases.md`).
 
 ---
 
@@ -439,5 +439,6 @@ Filled in as phases complete.
 | 1 | 2026-10-10 | Haiku 4.5 ranking quality 0.48 (chance); noise floor 0.2 points; 18% of skips are missed sponsorship rejections; Phase 1b added. |
 | 1b, 1c | 2026-10-10 | New sponsorship phrases and the repost-link filter. Queue hit rate on past jobs goes from 46.8% to 57.4% (251 dead skips removed, 7 applied, all justified). 52 tests pass. |
 | 2 | 2026-10-10 | Code done, 63 tests pass. Eval gate not passed: every configuration ranks at chance on the filtered skip labels; Haiku 5.5 scores 14 points lower; full descriptions help Haiku 5.5. Disagreement review needed. |
+| Ship | 2026-10-10 | PR #12 and PR #13 deployed. First live run: 3 of 3 JSearch jobs dropped as repost-only, 3 of 3 jobs scored on Haiku 4.5, usage log line present. 65 tests pass. |
 | 3 | | |
 | 4 | | |
