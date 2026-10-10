@@ -43,7 +43,7 @@ def send_message(text: str) -> None:
 
 
 def send_high_match_alert(jobs: list[dict]) -> None:
-    """Send one message listing high-match jobs (≥85) added to the apply queue this run."""
+    """Send one message listing high-match jobs (≥ high_match_threshold) added to the apply queue this run."""
     if not jobs:
         return
 
