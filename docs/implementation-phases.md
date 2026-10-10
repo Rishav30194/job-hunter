@@ -597,3 +597,10 @@ Per `docs/haiku-5-5-upgrade-plan-2026-10-10.md` (branch `feature/haiku-5-5-upgra
 - **Eval tooling** — `scripts/export_eval_set.py` (read-only labelled sample from the VPS) and `scripts/eval_scoring.py` (scores the frozen set per model configuration via the Batches API and reports ranking, queue, visa, and cost metrics). Eval data lives in the gitignored `eval/`.
 - 17 new tests (65 total). Live checks: full `fetch_jobs()` run (961 jobs, all with links) and a 3-job batch through the production scorer on the default model.
 
+
+## Post-Launch Fix — Pinned Dependencies (2026-10-10)
+
+Deploying PR #12 rebuilt the image, and the `>=`-only `requirements.txt` pulled new major versions (SQLAlchemy 2.1, anthropic 1.x, pandas 3, plotly 7). SQLAlchemy 2.1 defaults `postgresql://` to the `psycopg` 3 driver, which is not installed, so the scheduler crash-looped on startup.
+
+- [x] `requirements.txt` pinned with `==` to the versions the tests and live checks ran on (local venv). Clean install verified in `python:3.12-slim` on the VPS; `pip check` clean.
+- [ ] **Upgrade to the latest versions** as its own branch: bump one major at a time (SQLAlchemy 2.1 with `psycopg` 3 or a `postgresql+psycopg2://` URL, anthropic 1.x per its migration guide, pandas 3 and plotly 7 for the dashboard, python-jobspy 1.3), run the tests and a live fetch and scorer batch after each, then deploy.
