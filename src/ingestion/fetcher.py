@@ -1,7 +1,9 @@
 """Fetches job listings via jobspy (Indeed) and JSearch (Google for Jobs) and applies hard pre-filters."""
 
 import logging
+import re
 from datetime import date, datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 import httpx
 import pandas as pd
@@ -77,6 +79,24 @@ VISA_REJECTION_PHRASES: list[str] = [
     "sponsorship not available",
     "sponsorship not provided",
     "no visa",
+    # Explicit rejections found in skipped queue jobs (eval, 2026-10-10). Every
+    # one sat outside the scorer's description window, so nothing caught them.
+    "does not sponsor",
+    "will not provide sponsorship",
+    "not eligible for visa sponsorship",
+    "do not offer visa sponsorship",
+    "does not offer work authorization sponsorship",
+    "do not anticipate providing visa sponsorship",
+    "does not provide immigration-related sponsorship",
+    "not considering candidates that need any type of immigration sponsorship",
+    "unable to proceed with candidates who require visa sponsorship",
+    "will not now or in the future commence an immigration case",
+    "not now or in the future require sponsorship",
+    "without employer sponsorship",
+    "without need for visa sponsorship",
+    "without the need for sponsorship",
+    "without the need for employer sponsorship",
+    "without the need for visa sponsorship",
     # Citizenship / clearance mandates — never phrased as a sponsorship
     # rejection, but equally disqualifying for a candidate needing sponsorship.
     "must be a us citizen",
@@ -88,6 +108,26 @@ VISA_REJECTION_PHRASES: list[str] = [
     "security clearance",
     "ts/sci",
 ]
+
+
+_MARKDOWN_ESCAPE = re.compile(r"\\(.)")
+
+# Repost/scraper sites JSearch often returns as the only apply link. Since
+# 2026-07-16 the user applied to none of their listings and skipped 200+
+# (bebee alone: 85 skipped, 0 applied) — the postings are paywalled, need a
+# signup, or no longer exist. LinkedIn, Dice, and Built In stay: users apply there.
+_JSEARCH_REPOST_DOMAINS: frozenset[str] = frozenset({
+    "bebee.com",
+    "jobleads.com",
+    "learn4good.com",
+    "trabajo.org",
+    "haystackapp.io",
+    "recruit.net",
+    "jobilize.com",
+    "salutemyjob.com",
+    "adzuna.com",
+    "lensa.com",
+})
 
 
 def fetch_jobs() -> list[dict]:
@@ -182,8 +222,31 @@ def _fetch_jsearch() -> list[dict]:
         return []
 
     jobs = [_normalize_jsearch(item) for item in items]
-    logger.info("JSearch: fetched %d raw jobs", len(jobs))
-    return jobs
+    linked = [job for job in jobs if job["url"]]
+    logger.info(
+        "JSearch: fetched %d raw jobs, dropped %d with no usable apply link (repost sites or none)",
+        len(jobs), len(jobs) - len(linked),
+    )
+    return linked
+
+
+def _pick_jsearch_link(item: dict) -> str | None:
+    """Return the best apply link for a JSearch item, or None when every option is a repost site.
+
+    Prefers a direct employer link, then any option off the repost denylist.
+    """
+    options = item.get("apply_options") or []
+    if item.get("job_apply_link"):
+        options = [{"apply_link": item["job_apply_link"], "is_direct": item.get("job_apply_is_direct")}, *options]
+    usable = [o for o in options if o.get("apply_link") and not _is_repost_link(o["apply_link"])]
+    direct = [o for o in usable if o.get("is_direct")]
+    return (direct or usable or [{}])[0].get("apply_link")
+
+
+def _is_repost_link(url: str) -> bool:
+    """Return True when the URL's host is a denylisted repost site or one of its subdomains."""
+    host = urlparse(url).netloc.lower().split(":")[0]
+    return any(host == domain or host.endswith("." + domain) for domain in _JSEARCH_REPOST_DOMAINS)
 
 
 def _normalize_jsearch(item: dict) -> dict:
@@ -221,7 +284,7 @@ def _normalize_jsearch(item: dict) -> dict:
         "salary_max": sal_max,
         "salary_text": salary_text,
         "description": item.get("job_description") or None,
-        "url": item.get("job_apply_link") or item.get("job_google_link") or None,
+        "url": _pick_jsearch_link(item),
         "source": "jsearch",
         "posted_at": posted_at,
     }
@@ -358,7 +421,9 @@ def _is_visa_rejected(description: str | None) -> bool:
     """Return True if the job description explicitly rejects visa sponsorship."""
     if not description:
         return False
-    text = description.lower()
+    # Indeed descriptions arrive as escaped markdown ("employment\-based") and
+    # wrap lines mid-sentence; both would split a phrase and hide the match.
+    text = " ".join(_MARKDOWN_ESCAPE.sub(r"\1", description).lower().split())
     return any(phrase in text for phrase in VISA_REJECTION_PHRASES)
 
 

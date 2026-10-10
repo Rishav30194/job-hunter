@@ -312,19 +312,37 @@ def _decode_part(payload: dict) -> str:
 
 def _classify_request_params(subject: str, sender: str, body: str) -> dict:
     """Build the Messages API request body for one email — shared by batch and sequential paths."""
-    return {
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": 300,
-        "temperature": 0,
+    params = {
+        "model": settings.claude_model,
+        # Backstop only: Haiku 5.5 counts ~36% more tokens for the same text.
+        "max_tokens": 1024,
         "system": _SYSTEM_PROMPT,
         "tools": [_CLASSIFICATION_TOOL],
         "tool_choice": {"type": "tool", "name": "classify_email"},
         "messages": [{"role": "user", "content": f"From: {sender}\nSubject: {subject}\n\n{body}"}],
     }
+    # Haiku 5.5 rejects any non-default temperature with a 400.
+    if settings.claude_model.startswith("claude-haiku-4-5"):
+        params["temperature"] = 0
+    return params
 
 
 def _parse_classification(response) -> dict:
-    """Extract the classification dict from a Messages API response. Raises on malformed output."""
+    """Extract the classification dict from a Messages API response. Raises on malformed output.
+
+    A refusal becomes an unconfident recruiter_reply: the email is starred and
+    alerted for manual review instead of being marked read unseen, and
+    confident=False keeps it from changing any application status.
+    """
+    if response.stop_reason == "refusal":
+        logger.warning("Model declined to classify an email — flagging for manual review")
+        return {
+            "category": "recruiter_reply",
+            "company": "",
+            "job_title": "",
+            "summary": "The model declined to classify this email — check it manually.",
+            "confident": False,
+        }
     tool_block = next((b for b in response.content if b.type == "tool_use"), None)
     if tool_block is None:
         raise ValueError("No tool_use block in classify_email response")

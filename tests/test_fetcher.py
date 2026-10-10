@@ -1,8 +1,10 @@
-"""Unit tests for the visa pre-filter in src.ingestion.fetcher."""
+"""Unit tests for the visa pre-filter and JSearch link choice in src.ingestion.fetcher."""
 
 import unittest
+from unittest.mock import MagicMock, patch
 
-from src.ingestion.fetcher import _is_visa_rejected
+from src.ingestion import fetcher
+from src.ingestion.fetcher import _is_visa_rejected, _pick_jsearch_link
 
 # Real E-Verify compliance boilerplate that killed 47 good jobs before the
 # phrase list was fixed — must NOT trigger the pre-filter.
@@ -56,9 +58,91 @@ class IsVisaRejectedTest(unittest.TestCase):
     def test_must_be_a_us_citizen_is_rejected(self):
         self.assertTrue(_is_visa_rejected("Applicants must be a US citizen."))
 
+    def test_real_rejection_wordings_from_skipped_jobs_are_rejected(self):
+        # Each sentence comes from a queued job the user had to skip by hand
+        # (eval, 2026-10-10); the old phrase list matched none of them.
+        for sentence in (
+            "PNC will not provide sponsorship for employment visas or participate in STEM OPT.",
+            "* This position is not eligible for Visa sponsorship *",
+            "**This position does not offer work authorization sponsorship now or in the future.",
+            "Allstate generally does not sponsor individuals for employment-based visas.",
+            "We do not anticipate providing visa sponsorship/support for this position.",
+            "At this time, we're not considering candidates that need any type of immigration sponsorship",
+            "We do not offer visa sponsorship or assistance.",
+            'WSI will not now or in the future commence an immigration case or "sponsor" an individual',
+            "You must be legally authorized to work in the U.S. without need for visa sponsorship.",
+            "GM does not provide immigration-related sponsorship for this role.",
+            "We are unable to proceed with candidates who require visa sponsorship now or in the future.",
+            "Applicants must have work authorization that does not now or in the future require sponsorship",
+            "Must be authorized to work in the United States without the need for employer sponsorship.",
+            "Must be authorized to work in the United States on a full-time basis without employer sponsorship.",
+        ):
+            with self.subTest(sentence=sentence):
+                self.assertTrue(_is_visa_rejected(sentence))
+
+    def test_markdown_escapes_and_line_breaks_do_not_hide_a_rejection(self):
+        self.assertTrue(_is_visa_rejected("Allstate generally does not\nsponsor individuals."))
+        self.assertTrue(_is_visa_rejected("GM does not provide immigration\\-related sponsorship."))
+
+    def test_sponsorship_offers_are_not_rejected(self):
+        for sentence in (
+            "Capital One will consider sponsoring a new qualified applicant for employment authorization.",
+            "GEICO will consider sponsoring a new qualified applicant for employment authorization.",
+            "We sponsor H-1B transfers for eligible candidates.",
+            "Visa sponsorship is available for this position.",
+            "Morgan Stanley sponsored benefit programs.",
+        ):
+            with self.subTest(sentence=sentence):
+                self.assertFalse(_is_visa_rejected(sentence))
+
     def test_empty_and_none_are_not_rejected(self):
         self.assertFalse(_is_visa_rejected(None))
         self.assertFalse(_is_visa_rejected(""))
+
+
+class PickJsearchLinkTest(unittest.TestCase):
+    """JSearch jobs keep a usable apply link or are dropped."""
+
+    def test_repost_only_link_is_dropped(self):
+        item = {"job_apply_link": "https://bebee.com/job/1",
+                "apply_options": [{"apply_link": "https://us.trabajo.org/2", "is_direct": False}]}
+        self.assertIsNone(_pick_jsearch_link(item))
+
+    def test_linkedin_link_is_kept(self):
+        item = {"job_apply_link": "https://www.linkedin.com/jobs/view/1", "apply_options": []}
+        self.assertEqual(_pick_jsearch_link(item), "https://www.linkedin.com/jobs/view/1")
+
+    def test_direct_employer_option_beats_repost_main_link(self):
+        item = {"job_apply_link": "https://www.jobleads.com/1",
+                "apply_options": [
+                    {"apply_link": "https://www.dice.com/2", "is_direct": False},
+                    {"apply_link": "https://careers.acme.com/3", "is_direct": True},
+                ]}
+        self.assertEqual(_pick_jsearch_link(item), "https://careers.acme.com/3")
+
+    def test_repost_subdomains_are_dropped_but_lookalikes_kept(self):
+        self.assertIsNone(_pick_jsearch_link({"job_apply_link": "https://us.trabajo.org/1"}))
+        self.assertIsNone(_pick_jsearch_link({"job_apply_link": "https://jobs.bebee.com/1"}))
+        self.assertEqual(
+            _pick_jsearch_link({"job_apply_link": "https://notbebee.com/1"}), "https://notbebee.com/1"
+        )
+
+    def test_fetch_jsearch_drops_repost_only_jobs(self):
+        def item(link: str) -> dict:
+            return {"job_title": "Senior Java Engineer", "employer_name": "Acme", "job_apply_link": link,
+                    "apply_options": [{"publisher": "x", "apply_link": link, "is_direct": False}]}
+
+        response = MagicMock()
+        response.json.return_value = {"data": [
+            item("https://bebee.com/1"), item("https://www.linkedin.com/jobs/view/2"), item("https://us.trabajo.org/3"),
+        ]}
+        with patch.object(fetcher.settings, "rapidapi_key", "test-key"), \
+                patch.object(fetcher.httpx, "get", return_value=response):
+            jobs = fetcher._fetch_jsearch()
+        self.assertEqual([j["url"] for j in jobs], ["https://www.linkedin.com/jobs/view/2"])
+
+    def test_no_links_at_all_is_dropped(self):
+        self.assertIsNone(_pick_jsearch_link({}))
 
 
 if __name__ == "__main__":

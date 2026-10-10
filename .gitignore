@@ -42,3 +42,6 @@ Thumbs.db
 data/indeed_session.json
 data/*.pdf
 data/screenshots/
+
+# Eval data and results: production job descriptions, never committed
+eval/
