@@ -28,9 +28,9 @@
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                    LLM SCORING ENGINE                              │   │
-│  │  Claude Haiku — scores each job 0–100 via Message Batch (50% $)   │   │
+│  │  Claude Haiku 5.5 — scores each job 0–100 via Batch (50% $)       │   │
 │  │  Pre-disqualified (visa) jobs skip API call — score=0 directly    │   │
-│  │  Cached system prompt (>4,096 tok) — prefix reads at 1/10 price   │   │
+│  │  Cached system prompt (~6.2K tok) — prefix reads at 1/10 price    │   │
 │  │  Rubric: tech stack · seniority fit · domain experience           │   │
 │  │  Company tier and salary do NOT affect score                      │   │
 │  │  Returns: score · reasoning · visa_disqualified flag              │   │
@@ -38,8 +38,8 @@
 │                               │                                          │
 │  ┌────────────────────────────▼──────────────────────────────────────┐   │
 │  │                      DECISION ROUTER                               │   │
-│  │  score ≥ 75  ──► Apply Queue (cap: 20/day; overflow → archived)   │   │
-│  │  score < 75  ──► Archived                                         │   │
+│  │  score ≥ 70  ──► Apply Queue (cap: 20/day; overflow → archived)   │   │
+│  │  score < 70  ──► Archived                                         │   │
 │  │  visa_disqualified ──► Disqualified (persisted, deduped next run) │   │
 │  └────────────────────────────┬──────────────────────────────────────┘   │
 │                               │                                          │
@@ -60,7 +60,7 @@
 │         │                                 │                              │
 │  ┌──────▼──────────────────────────┐  ┌───▼──────────────────────────┐   │
 │  │  STREAMLIT DASHBOARD            │  │   TELEGRAM ALERTS            │   │
-│  │  https://jobhunter.mooo.com     │  │   High-match jobs (≥85)      │   │
+│  │  https://jobhunter.mooo.com     │  │   High-match jobs (≥80)      │   │
 │  │  Basic auth (htpasswd)          │  │   Run summary                │   │
 │  │  Metrics · Apply Queue ·        │  │   Daily queue digest (09:00) │   │
 │  │  Applied · All Jobs ·           │  │   Rejection / assessment /   │   │
@@ -79,7 +79,7 @@ Three sources merged before deduplication:
 - **JSearch (RapidAPI)** — 1 call/run, rotates across 4 queries (one per 6h slot) to vary coverage. ~10 Google for Jobs results per run. Capped at 1 call/run to stay within 200 req/month free tier. A job whose only apply link is a repost/scraper site (`_JSEARCH_REPOST_DOMAINS`: bebee, jobleads, trabajo, learn4good, and others) is dropped before scoring: the user skipped 182 of 184 such jobs. On the free tier JSearch returns one non-direct link per job, so there is no better link to switch to; a direct employer link is preferred when one exists.
 - **ATS boards** (`src/ingestion/ats_boards.py`) — direct polling of 25 target companies' Greenhouse/Lever/Ashby public job-board APIs (free, unauthenticated JSON — no scraping, no bot detection; tokens in `data/ats_boards.py`, all verified live). Gets postings on day one instead of days later via Indeed. Per-company isolation: a 404/renamed token logs a warning and never breaks the others. Titles are pre-filtered to Java/backend/software-engineer roles and clearly non-US locations are dropped before the shared hard filters run. ATS jobs are exempt from the 48h age filter (postings stay open for weeks); dedup by content hash still guarantees each is scored only once.
 
-Excluded platforms: Glassdoor (400 errors), ZipRecruiter (403 bot block), LinkedIn (silent rate limits), native Google Jobs (jobspy cursor broken in v1.1.82).
+Excluded platforms: Glassdoor (400 errors), ZipRecruiter (403 bot block), LinkedIn (silent rate limits), native Google Jobs (jobspy cursor broken in v1.1.82; not re-tested on 1.3.0, and not needed while the queue fills).
 
 Hard pre-filters: age ≤ 48h, salary ≥ $100K, intern/junior title keywords, hard-excluded companies.
 Visa-rejected jobs (explicit "no sponsorship" phrases, US-citizenship mandates, or security-clearance requirements) are **tagged** `visa_disqualified=True` and kept — they pass through dedup and are persisted as `disqualified` so future runs skip them via the content hash. The phrase list matches only unambiguous rejections: bare "us citizen" (E-Verify boilerplate) and "must be authorized to work" (an H1B holder *is* authorized) were removed after killing 60+ good jobs in production — those descriptions now fall through to LLM scoring, whose rubric handles the nuance. The list also holds 16 explicit wordings found in skipped queue jobs ("will not provide sponsorship", "not eligible for visa sponsorship", "generally does not sponsor", "without the need for employer sponsorship", and so on); these sat in the middle of long descriptions, outside the scorer's window. Matching runs on text with markdown escapes removed and whitespace collapsed, so `employment\-based` or a line break cannot hide a phrase.
@@ -93,10 +93,10 @@ Also applies the rejection cooldown before scoring: companies with `cooldown_min
 Three-tier company list sourced from MyVisaJobs FY2025 H1B LCA data. Tier labels are passed to the scorer as context but do **not** affect the score — company tier reflects selectivity, not candidate fit. Hard-excluded set contains only Infosys / Infosys Limited.
 
 ### `src/scoring/scorer.py`
-Claude Haiku scoring (0–100) with resume baked into system prompt. The model comes from the `CLAUDE_MODEL` setting (default `claude-haiku-4-5-20251001`; `claude-haiku-5-5` is supported). Haiku 4.5 keeps its original request shape so a rollback scores exactly as before: `temperature` 0, a 3,000-character description window, and the plain tool. Haiku 5.5 requests omit `temperature`, which that model rejects, read a 12,000-character window (first 9,000 + last 3,000), because sponsorship and years requirements often sit mid-description, and use the strict tool (`SCORING_TOOL_STRICT`); the score is clamped to 0–100 because strict mode rejects integer bounds. The pre-warm sends the same tool as the requests, since tools are part of the cached prefix. A model refusal (`stop_reason: "refusal"`) is final: score 0, reasoning "Declined by model", so the job is persisted instead of being re-fetched and re-billed every cycle. Each batch logs its summed token usage. Pre-disqualified jobs (visa_disqualified=True) short-circuit without an API call — score set to 0 directly. All other jobs are submitted as one Message Batch (50% of standard token price; the 6-hour cadence easily absorbs batch latency — polled every 30s, 2-hour ceiling). Jobs whose batch entry errors — or all of them, if the batch itself fails — fall back to the sequential path with tenacity retries on RateLimitError / APIStatusError. The system prompt is kept above Haiku's 4,096-token cacheable minimum so the `cache_control` breakpoint is effective: sequential calls (and batch entries, best-effort) read the ~4,200-token prefix at one-tenth input price instead of full price. Before each batch submit, a `max_tokens=0` pre-warm request writes the tools+system cache once so parallel batch entries read it instead of each paying a cache write (previously the largest cost component of a batch). Credit guard (`src/anthropic_guard.py`): when the account runs out of API credits, scoring aborts immediately (no doomed sequential retries), one Telegram alert fires, and affected jobs return score=None — the pipeline never persists unscored jobs, so they are re-fetched and scored on the next cycle once credits are topped up.
+Claude Haiku scoring (0–100) with resume baked into system prompt. The model comes from the `CLAUDE_MODEL` setting (default `claude-haiku-5-5`). The request shape is tuned for Haiku 5.5, as validated by the disagreement review: no `temperature` (Haiku 5.5 rejects it), a 12,000-character description window (first 9,000 + last 3,000), because sponsorship and years requirements often sit mid-description, and a strict tool; the score is clamped to 0–100 because strict mode rejects integer bounds. Another model needs a new eval; going back to Haiku 4.5 means redeploying the last release built for it (rollback steps in `docs/haiku-5-5-upgrade-plan-2026-10-10.md`). The pre-warm sends the same tool as the requests, since tools are part of the cached prefix. A model refusal (`stop_reason: "refusal"`) is final: score 0, reasoning "Declined by model", so the job is persisted instead of being re-fetched and re-billed every cycle. Each batch logs its summed token usage. Pre-disqualified jobs (visa_disqualified=True) short-circuit without an API call — score set to 0 directly. All other jobs are submitted as one Message Batch (50% of standard token price; the 6-hour cadence easily absorbs batch latency — polled every 30s, 2-hour ceiling). Jobs whose batch entry errors — or all of them, if the batch itself fails — fall back to the sequential path with tenacity retries on RateLimitError / APIStatusError. The cached prefix (~6,200 tokens on Haiku 5.5) is far above that model's 512-token cache minimum, so the `cache_control` breakpoint is effective: sequential calls (and batch entries, best-effort) read it at one-tenth input price instead of full price. Before each batch submit, a `max_tokens=0` pre-warm request writes the tools+system cache once so parallel batch entries read it instead of each paying a cache write (previously the largest cost component of a batch). Credit guard (`src/anthropic_guard.py`): when the account runs out of API credits, scoring aborts immediately (no doomed sequential retries), one Telegram alert fires, and affected jobs return score=None — the pipeline never persists unscored jobs, so they are re-fetched and scored on the next cycle once credits are topped up.
 
 ### `src/scoring/prompts.py`
-System prompt contains: candidate resume (~8 years, Java/Spring/Kafka/cloud), scoring rubric (tech match 50%, seniority fit 30%, domain experience 20%), and calibration examples anchoring each score band. Company tier and salary explicitly neutral — rubric scores fit, not desirability. Seniority treats a bare minimum ("2+ years", "3+ years") on a mid-level or senior role as no penalty — the candidate clears it and companies set the level in interviews — and keeps the heavy penalty for entry-level roles ("0–2 years", "Engineer I", "new grad"), which are also unlikely to sponsor. `build_user_prompt` takes the description window from the scorer (default first 2,000 + last 1,000 chars, head+tail) so requirements buried at the end of long JDs are not missed.
+System prompt contains: candidate resume (~8 years, Java/Spring/Kafka/cloud), scoring rubric (tech match 50%, seniority fit 30%, domain experience 20%), and calibration examples anchoring each score band. Company tier and salary explicitly neutral — rubric scores fit, not desirability. Seniority treats a bare minimum ("2+ years", "3+ years") on a mid-level or senior role as no penalty — the candidate clears it and companies set the level in interviews — and keeps the heavy penalty for entry-level roles ("0–2 years", "Engineer I", "new grad"), which are also unlikely to sponsor. `build_user_prompt` keeps the first 9,000 + last 3,000 chars (head+tail, 12,000 in total) so requirements in the middle and at the end of long JDs are not missed.
 
 ### `src/routing/router.py`
 Single apply queue: jobs with score ≥ `auto_apply_threshold` (75) go to `queued_apply`, sorted highest-first. Daily cap: 20 jobs/day. Overflow and sub-threshold jobs → `archived`. No human_review tier. Clone suppression: a job whose company+title already sits in the funnel (`queued_apply`/`applied`/`phone_screen`/`interview`/`offer`) — or was queued earlier in the same run — is archived, so one role posted in five cities enters the queue once. (The content hash includes the city on purpose; changing it would re-score the whole DB.)
@@ -106,7 +106,7 @@ Gmail API (google-api-python-client) polls unread emails from the last 48h every
 
 ### `src/notifications/telegram.py`
 httpx Telegram Bot API. Three notification types:
-- **High-match alert** — fires when jobs scoring ≥85 are queued this run (top 10 with links)
+- **High-match alert** — fires when jobs scoring at or above `HIGH_MATCH_THRESHOLD` (default 80) are queued this run (top 10 with links)
 - **Run summary** — fired when new jobs are found or an error occurred
 - **Daily queue digest** — fires at 09:00 UTC if any jobs are waiting in apply queue
 
@@ -117,7 +117,7 @@ APScheduler BlockingScheduler. Two jobs:
 
 ### `dashboard/app.py`
 Streamlit dashboard at https://jobhunter.mooo.com. Five tabs:
-- **Apply Queue** — jobs scored ≥75, expandable cards with Open & Apply link, Mark Applied, Skip, and Notes field
+- **Apply Queue** — jobs scored at or above `AUTO_APPLY_THRESHOLD` (default 70), expandable cards with Open & Apply link, Mark Applied, Skip, and Notes field
 - **Applied** — application funnel chart + status update buttons (Phone Screen / Interview / Offer / Rejected) for in-progress applications
 - **All Jobs** — searchable/filterable full table with score range slider
 - **Analytics** — score distribution histogram, applications over time, jobs by source
@@ -193,7 +193,7 @@ fetch_jobs()
                                             (50% price; pre-disqualified skip API;
                                              sequential fallback on batch failure)
                              └─► route_jobs()
-                                  ├─► queued_apply  → DB + Telegram alert (if ≥85)
+                                  ├─► queued_apply  → DB + Telegram alert (if ≥80)
                                   ├─► archived      → DB
                                   └─► disqualified  → DB (prevents re-fetch next run)
 

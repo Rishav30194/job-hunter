@@ -84,7 +84,7 @@ def run_pipeline() -> None:
                 run_stats["archived"] = len(buckets["archived"])
                 run_stats["disqualified"] = len(buckets["disqualified"])
 
-                # Telegram alert for ≥85 jobs added to the queue this run.
+                # Telegram alert for high-match jobs added to the queue this run.
                 high_match_jobs = [
                     j for j in buckets["queued_apply"]
                     if (j.get("score") or 0) >= settings.high_match_threshold

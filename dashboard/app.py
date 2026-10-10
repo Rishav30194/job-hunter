@@ -7,6 +7,7 @@ import plotly.express as px
 import streamlit as st
 from sqlalchemy import func, select
 
+from config.settings import settings
 from src.db.models import Application, Job, PipelineRun
 from src.db.session import get_session
 
@@ -44,7 +45,7 @@ def _query_metrics() -> dict:
         # says nothing about the current market.
         high_match = session.scalar(
             select(func.count(Job.id)).where(
-                Job.score >= 85,
+                Job.score >= settings.high_match_threshold,
                 Job.fetched_at >= datetime.now(_tz.utc).replace(tzinfo=None) - timedelta(days=30),
             )
         ) or 0
@@ -234,8 +235,8 @@ except Exception as _db_err:
                    applied_today=0, applied_week=0, interviews=0)
 
 c1, c2, c3, c4, c5, c6 = st.columns(6)
-c1.metric("To Apply (≥75)", metrics["to_apply"])
-c2.metric("High Match (≥85, 30d)", metrics["high_match"])
+c1.metric(f"To Apply (≥{settings.auto_apply_threshold})", metrics["to_apply"])
+c2.metric(f"High Match (≥{settings.high_match_threshold}, 30d)", metrics["high_match"])
 c3.metric("Applied", metrics["applied"])
 c4.metric("Applied Today", metrics["applied_today"])
 c5.metric("Applied This Week", metrics["applied_week"])
@@ -254,7 +255,7 @@ tab_queue, tab_applied, tab_all, tab_analytics, tab_pipeline = st.tabs(
 # ── Apply Queue ───────────────────────────────────────────────────────────────
 with tab_queue:
     st.subheader("Apply Queue")
-    st.caption("Jobs scored ≥75 — open and apply manually, or skip to dismiss permanently.")
+    st.caption(f"Jobs scored ≥{settings.auto_apply_threshold} — open and apply manually, or skip to dismiss permanently.")
 
     try:
         apply_jobs = _query_apply_queue()
@@ -321,7 +322,7 @@ with tab_applied:
     })
     if funnel_df["Count"].sum() > 0:
         fig = px.funnel(funnel_df, x="Count", y="Stage")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("No applications yet.")
 
@@ -364,7 +365,7 @@ with tab_applied:
         st.dataframe(
             df,
             column_config={"url": st.column_config.LinkColumn("Link", display_text="Open")},
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     else:
@@ -411,7 +412,7 @@ with tab_all:
         st.dataframe(
             df_all[mask][display_cols].reset_index(drop=True),
             column_config={"url": st.column_config.LinkColumn("Link", display_text="Open")},
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
         st.caption(f"Showing {mask.sum()} of {len(df_all)} jobs")
@@ -433,11 +434,11 @@ with tab_analytics:
                 labels={"x": "Score", "y": "Count"},
                 color_discrete_sequence=["#4f8bf9"],
             )
-            fig_hist.add_vline(x=85, line_dash="dash", line_color="green",
-                               annotation_text="High match (85)")
-            fig_hist.add_vline(x=75, line_dash="dash", line_color="orange",
-                               annotation_text="Apply queue (75)")
-            st.plotly_chart(fig_hist, use_container_width=True)
+            fig_hist.add_vline(x=settings.high_match_threshold, line_dash="dash", line_color="green",
+                               annotation_text=f"High match ({settings.high_match_threshold})")
+            fig_hist.add_vline(x=settings.auto_apply_threshold, line_dash="dash", line_color="orange",
+                               annotation_text=f"Apply queue ({settings.auto_apply_threshold})")
+            st.plotly_chart(fig_hist, width="stretch")
         else:
             st.info("No scored jobs yet.")
 
@@ -453,7 +454,7 @@ with tab_analytics:
             df_time["date"] = pd.to_datetime(df_time["date"])
             fig_line = px.line(df_time, x="date", y="count",
                                labels={"date": "Date", "count": "Applications"})
-            st.plotly_chart(fig_line, use_container_width=True)
+            st.plotly_chart(fig_line, width="stretch")
         else:
             st.info("No applications over time yet.")
 
@@ -468,7 +469,7 @@ with tab_analytics:
         fig_src = px.bar(df_src, x="source", y="count",
                          labels={"source": "Source", "count": "Jobs"},
                          color_discrete_sequence=["#4f8bf9"])
-        st.plotly_chart(fig_src, use_container_width=True)
+        st.plotly_chart(fig_src, width="stretch")
     else:
         st.info("No source data yet.")
 
@@ -496,6 +497,6 @@ with tab_pipeline:
                 "scored": st.column_config.NumberColumn("Scored"),
                 "error": st.column_config.TextColumn("Error"),
             },
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )

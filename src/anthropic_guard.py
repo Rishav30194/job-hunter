@@ -27,3 +27,4 @@ def retryable_api_error(exc: BaseException) -> bool:
         isinstance(exc, (anthropic.RateLimitError, anthropic.APIStatusError))
         and not is_credit_error(exc)
     )
+

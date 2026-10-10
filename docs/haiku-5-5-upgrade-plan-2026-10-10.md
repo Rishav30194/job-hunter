@@ -1,6 +1,6 @@
 # Haiku 5.5 upgrade plan: lower cost, same or better picks
 
-**Written:** 2026-10-10 · **Status:** Phases 0–2 done. Phases 1b, 1c, and the inactive Phase 2 code merged (PR #12) and deployed 2026-10-10. Phase 3 done 2026-10-10: the disagreement review chose Haiku 5.5 with the 12K window, the strict tool, softer seniority rules, and a threshold of 70. Phase 4 in progress: production switched to Haiku 5.5 (threshold 70) at 2026-10-10 23:02 UTC; 3-day monitoring runs until 2026-10-13.
+**Written:** 2026-10-10 · **Status:** Phases 0–2 done. Phases 1b, 1c, and the inactive Phase 2 code merged (PR #12) and deployed 2026-10-10. Phase 3 done 2026-10-10: the disagreement review chose Haiku 5.5 with the 12K window, the strict tool, softer seniority rules, and a threshold of 70. Phase 4 in progress: production switched to Haiku 5.5 (threshold 70) at 2026-10-10 23:02 UTC; 3-day monitoring runs until 2026-10-13. PR #17 (2026-10-10) removed the Haiku 4.5 request path and made Haiku 5.5, 70, and 80 the code defaults; rollback is now a redeploy of `c88a55e` (Phase 4, step 5).
 **Goal:** move job scoring and email classification from Claude Haiku 4.5 to Claude Haiku 5.5. Cut API spend, and use part of the savings to make the daily top 20 better. Nothing reaches production until an eval shows the new configuration ranks jobs at least as well as the current one.
 **Branch for this work:** `feature/haiku-5-5-upgrade`, merged as PR #12. Phases 3–4 need a new branch.
 
@@ -407,7 +407,18 @@ One final configuration is chosen and recorded here with its eval numbers, and t
    | Console spend per day | About 1/4 to 1/7 of the Phase 0 baseline | Higher than the baseline |
    | Gmail classifications | No false status changes | Any wrong `rejected` or `phone_screen` update |
 
-5. **Rollback:** remove those three lines (or set `CLAUDE_MODEL=claude-haiku-4-5-20251001`, `AUTO_APPLY_THRESHOLD=75`, and `HIGH_MATCH_THRESHOLD=85`) and restart `scheduler`. No redeploy is needed. The seniority rule change stays on both models. Changes from Phase 3 that only work on Haiku 5.5, such as `effort`, must be skipped when the setting names a Haiku 4.5 model, so rollback stays a one-line change.
+5. **Rollback.** From the dependency upgrade on, the code has one request shape, tuned for Haiku 5.5 (no `temperature`, strict tool, 12K window), and no Haiku 4.5 path. Commit `c88a55e` (PR #15's merge) is the last release that scores Haiku 4.5 exactly as before the upgrade; it also has the older pinned dependencies. To go back:
+
+   ```bash
+   ssh root@5.78.207.143
+   cd /opt/job-hunter
+   git checkout c88a55e                 # detached HEAD on the last Haiku 4.5-capable release
+   # In .env: CLAUDE_MODEL=claude-haiku-4-5-20251001, AUTO_APPLY_THRESHOLD=75, HIGH_MATCH_THRESHOLD=85
+   docker compose build
+   docker compose up -d --force-recreate scheduler dashboard   # recreate, so .env is reloaded
+   ```
+
+   To return to the current release afterwards: `git checkout main`, restore the three `.env` values (Haiku 5.5, 70, 80), build, and recreate. That release keeps the softer seniority rule, which applies to both models.
 6. After 2 stable weeks, update the memory notes on the caching minimum and cost, and mark this plan complete.
 
 ---
@@ -462,4 +473,4 @@ Filled in as phases complete.
 | 2 | 2026-10-10 | Code done, 63 tests pass. Eval gate not passed: every configuration ranks at chance on the filtered skip labels; Haiku 5.5 scores 14 points lower; full descriptions help Haiku 5.5. Disagreement review needed. |
 | Ship | 2026-10-10 | PR #12 and PR #13 deployed. First live run: 3 of 3 JSearch jobs dropped as repost-only, 3 of 3 jobs scored on Haiku 4.5, usage log line present. 65 tests pass. |
 | 3 | 2026-10-10 | Disagreement review: you agreed with Haiku 5.5 21 times and Haiku 4.5 4 times. Seniority rule softened for bare minimums; ranking of your ratings 0.97. Threshold 70: 9 of 14 would apply and 0 of 18 wouldn't apply queued, about 19.5 a day before the cap. Live 3-job batch on Haiku 5.5 through the production scorer: 3 of 3 scored, cache read on every entry. 71 tests pass. |
-| 4 | 2026-10-10 | Switched: PR #15 merged and deployed, VPS `.env` set to Haiku 5.5, threshold 70, alert 80 (previous file kept as `.env.bak-20261010`). Scheduler confirmed on `claude-haiku-5-5`. First run had no new jobs, so production scoring starts with the 2026-10-11 ~05:00 UTC run. Monitoring results pending. |
+| 4 | 2026-10-10 | Switched: PR #15 merged and deployed, VPS `.env` set to Haiku 5.5, threshold 70, alert 80 (previous file kept as `.env.bak-20261010`). Scheduler confirmed on `claude-haiku-5-5`. First run had no new jobs, so production scoring starts with the 2026-10-11 ~05:00 UTC run. PR #17 (dependency upgrade and single Haiku 5.5 request path) merged and deployed the same day. Monitoring results pending. |

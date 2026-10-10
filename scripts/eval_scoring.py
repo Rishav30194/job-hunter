@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+import copy
 import json
 import logging
 import sys
@@ -26,7 +27,7 @@ from pathlib import Path
 import anthropic
 
 from config.settings import settings
-from src.scoring.prompts import SCORING_TOOL, SCORING_TOOL_STRICT, build_system_prompt, build_user_prompt
+from src.scoring.prompts import SCORING_TOOL, build_system_prompt, build_user_prompt
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("eval_scoring")
@@ -50,6 +51,15 @@ _BATCH_DISCOUNT = 0.5
 _FORCED = {"type": "tool", "name": "score_job"}
 
 
+def _legacy_tool() -> dict:
+    """Return the pre-Phase-3 tool: not strict, with 0–100 integer bounds (baseline configs only)."""
+    tool = copy.deepcopy(SCORING_TOOL)
+    tool.pop("strict")
+    tool["input_schema"].pop("additionalProperties")
+    tool["input_schema"]["properties"]["score"].update(minimum=0, maximum=100)
+    return tool
+
+
 def _config(model: str, *, temperature: bool = False, strict: bool = False,
             effort: str | None = None, long_description: bool = False) -> dict:
     """Describe one eval configuration; see _request_params for how it is applied."""
@@ -60,7 +70,7 @@ def _config(model: str, *, temperature: bool = False, strict: bool = False,
 
 
 _CONFIGS = {
-    # Production today: Haiku 4.5, temperature 0, forced tool, 3,000-char window.
+    # Pre-upgrade production: Haiku 4.5, temperature 0, forced tool, 3,000-char window.
     "haiku45": _config("claude-haiku-4-5-20251001", temperature=True),
     # Phase 2: mechanical migration only.
     "haiku55": _config("claude-haiku-5-5"),
@@ -83,13 +93,13 @@ def _request_params(config: dict, job: dict) -> dict:
     With an effort level set, tool_choice is auto so the model can think before
     calling the tool; without one it stays forced, which skips thinking.
     """
-    # The long window and strict tool are the production Haiku 5.5 settings (scorer.py).
-    user_prompt = build_user_prompt(job, head=9000, tail=3000) if config["long_description"] else build_user_prompt(job)
+    # The long window and strict tool are the production settings (scorer.py, prompts.py).
+    user_prompt = build_user_prompt(job) if config["long_description"] else build_user_prompt(job, head=2000, tail=1000)
     params = {
         "model": config["model"],
         "max_tokens": 4096 if config["effort"] else (512 if config["temperature"] else 1024),
         "system": _system(),
-        "tools": [SCORING_TOOL_STRICT if config["strict"] else SCORING_TOOL],
+        "tools": [SCORING_TOOL if config["strict"] else _legacy_tool()],
         "tool_choice": {"type": "auto"} if config["effort"] else _FORCED,
         "messages": [{"role": "user", "content": user_prompt}],
     }
