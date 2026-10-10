@@ -537,7 +537,7 @@ curl http://localhost:8501                 # dashboard responds 200
 
 ## Open Action Items (next session)
 
-1. **Haiku 5.5 disagreement review.** The user reviews about 40 jobs where Haiku 4.5 and Haiku 5.5 disagree most; the result decides whether to switch models and what threshold to use (Phases 3–4 of `docs/haiku-5-5-upgrade-plan-2026-10-10.md`).
+1. **Switch to Haiku 5.5.** After the switch PR is merged and deployed, add `CLAUDE_MODEL=claude-haiku-5-5`, `AUTO_APPLY_THRESHOLD=70`, and `HIGH_MATCH_THRESHOLD=80` to the VPS `.env`, restart `scheduler`, and monitor for 3 days (Phase 4 of `docs/haiku-5-5-upgrade-plan-2026-10-10.md`).
 2. **Upgrade dependencies to the latest versions.** See "Post-Launch Fix — Pinned Dependencies (2026-10-10)".
 3. **Top up API credits.** $4.30 left on 2026-10-10, enough until about 2026-10-21. The credit guard alerts on Telegram if they run out.
 
@@ -601,3 +601,14 @@ Deploying PR #12 rebuilt the image, and the `>=`-only `requirements.txt` pulled 
 
 - [x] PR #13, merged and deployed 2026-10-10 (scheduler and dashboard were down about 5 minutes). `requirements.txt` pinned with `==` to the versions the tests and live checks ran on (local venv). Clean install verified in `python:3.12-slim` on the VPS; `pip check` clean.
 - [ ] **Upgrade to the latest versions** as its own branch: bump one major at a time (SQLAlchemy 2.1 with `psycopg` 3 or a `postgresql+psycopg2://` URL, anthropic 1.x per its migration guide, pandas 3 and plotly 7 for the dashboard, python-jobspy 1.3), run the tests and a live fetch and scorer batch after each, then deploy.
+
+## Post-Launch Improvements — Haiku 5.5 Switch Ready (2026-10-10)
+
+Per Phase 3 of `docs/haiku-5-5-upgrade-plan-2026-10-10.md` (branch `feature/haiku-5-5-switch`).
+
+- [x] **Disagreement review** — the user rated 40 jobs blind, where Haiku 4.5 and Haiku 5.5 disagree most. On 25 decisive ratings the user agreed with Haiku 5.5 21 times and Haiku 4.5 4 times; Haiku 5.5 also caught 3 no-sponsorship jobs Haiku 4.5 scored 42–87.
+- [x] **Seniority rule** — a bare minimum ("2+ years", "3+ years") on a mid-level or senior role is no longer an overqualification penalty; entry-level roles keep the heavy penalty. Ranking of the user's ratings: 0.97 (0.95–0.96 before, 0.43 on Haiku 4.5).
+- [x] **Haiku 5.5 request shape** — a 12,000-character description window (9,000 + 3,000) and the strict scoring tool, chosen only when `CLAUDE_MODEL` is Haiku 5.5. Haiku 4.5 keeps its original request, so rollback is a `.env` change. The cache pre-warm sends the same tool as the requests. `scripts/eval_scoring.py` now uses the production tool and window.
+- [x] **Threshold** — 70 on Haiku 5.5 (it scores about 14 points lower): 9 of 14 "would apply" and 0 of 18 "wouldn't apply" jobs queued, about 19.5 a day before the cap. Set through `.env`; `.env.example` documents the Haiku 5.5 values.
+- [x] 6 new tests (71 total). Live check: 3 jobs through the production scorer on Haiku 5.5, 3 of 3 scored, every entry read the cache.
+- [ ] Deploy, `.env` change, and 3-day monitoring (Phase 4).

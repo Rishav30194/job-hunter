@@ -1,6 +1,6 @@
 # Haiku 5.5 upgrade plan: lower cost, same or better picks
 
-**Written:** 2026-10-10 · **Status:** Phases 0–2 done. Phases 1b, 1c, and the inactive Phase 2 code merged (PR #12) and deployed 2026-10-10. The model switch waits on the disagreement review.
+**Written:** 2026-10-10 · **Status:** Phases 0–2 done. Phases 1b, 1c, and the inactive Phase 2 code merged (PR #12) and deployed 2026-10-10. Phase 3 done 2026-10-10: the disagreement review chose Haiku 5.5 with the 12K window, the strict tool, softer seniority rules, and a threshold of 70. Phase 4 (the switch) waits on merge, deploy, and the VPS `.env` change.
 **Goal:** move job scoring and email classification from Claude Haiku 4.5 to Claude Haiku 5.5. Cut API spend, and use part of the savings to make the daily top 20 better. Nothing reaches production until an eval shows the new configuration ranks jobs at least as well as the current one.
 **Branch for this work:** `feature/haiku-5-5-upgrade`, merged as PR #12. Phases 3–4 need a new branch.
 
@@ -353,6 +353,21 @@ If B is worse, stop. Phase 3 can try to recover quality, but only through change
 
 One final configuration is chosen and recorded here with its eval numbers, and the code for it is merged on the branch.
 
+**Chosen configuration (2026-10-10):** Haiku 5.5 with 3.1 (strict tool, scoring only; the email classifier is unchanged) and 3.2 (9,000 + 3,000-character window), plus a seniority rule change, at `AUTO_APPLY_THRESHOLD=70` and `HIGH_MATCH_THRESHOLD=80`. Experiments 3.3 and 3.4 (thinking) were not run: the chosen configuration already separates the review's "would apply" and "wouldn't apply" jobs almost perfectly, so there was little left to gain.
+
+- **Disagreement review (3.5):** you rated 40 jobs blind (14 would apply, 8 not sure, 18 wouldn't). On the 25 decisive ratings where the models disagreed, Haiku 5.5 agreed with you 21 times and Haiku 4.5 4 times. Haiku 5.5's visa flags caught 3 no-sponsorship jobs that Haiku 4.5 scored 42, 78, and 87.
+- **Seniority rule:** a bare minimum of 2–4 years ("3+ years") on a mid-level or senior role no longer counts as overqualified; entry-level roles ("0–2 years", "Engineer I", "new grad") keep the heavy penalty. Rescored with the rule: ranking of your ratings (AUC, would apply versus wouldn't) 0.97, against 0.95–0.96 before and 0.43 for Haiku 4.5.
+- **Threshold:**
+
+  | Haiku 5.5 threshold | Would apply jobs queued | Wouldn't apply jobs queued | Estimated queue per day before the cap |
+  |---|---|---|---|
+  | 75 | 4 of 14 | 0 of 18 | about 7.5 |
+  | **70** | **9 of 14** | **0 of 18** | **about 19.5** |
+  | 65 | 10 of 14 | 2 of 18 | about 23 |
+
+  The queue estimate weights the eval's per-band pass rates by the last 30 days of production volume per Haiku 4.5 score band; the same method gives 18.9 a day for Haiku 4.5 at 75, against 14.8 a day actually queued after clone suppression and the cap.
+- **Cost:** $0.000186 a job (eval mean), about $0.03 a day at production volume.
+
 **Eval spend for Phases 1–3:** about 300 jobs × about 8 runs (2 baseline runs on Haiku 4.5, the rest on Haiku 5.5) plus repeat runs. Under $2 in total. Get your approval before the first run.
 
 ---
@@ -374,7 +389,13 @@ One final configuration is chosen and recorded here with its eval numbers, and t
    docker compose up -d
    ```
 
-   Then set `CLAUDE_MODEL=claude-haiku-5-5` in the VPS `.env` and restart `scheduler`.
+   Then add these lines to the VPS `.env` and restart `scheduler`:
+
+   ```
+   CLAUDE_MODEL=claude-haiku-5-5
+   AUTO_APPLY_THRESHOLD=70
+   HIGH_MATCH_THRESHOLD=80
+   ```
 4. Monitor the first 3 days (12 runs):
 
    | Check | Expected | Rollback trigger |
@@ -386,7 +407,7 @@ One final configuration is chosen and recorded here with its eval numbers, and t
    | Console spend per day | About 1/4 to 1/7 of the Phase 0 baseline | Higher than the baseline |
    | Gmail classifications | No false status changes | Any wrong `rejected` or `phone_screen` update |
 
-5. **Rollback:** set `CLAUDE_MODEL=claude-haiku-4-5-20251001` and restart `scheduler`. No redeploy is needed. Changes from Phase 3 that only work on Haiku 5.5, such as `effort`, must be skipped when the setting names a Haiku 4.5 model, so rollback stays a one-line change.
+5. **Rollback:** remove those three lines (or set `CLAUDE_MODEL=claude-haiku-4-5-20251001`, `AUTO_APPLY_THRESHOLD=75`, and `HIGH_MATCH_THRESHOLD=85`) and restart `scheduler`. No redeploy is needed. The seniority rule change stays on both models. Changes from Phase 3 that only work on Haiku 5.5, such as `effort`, must be skipped when the setting names a Haiku 4.5 model, so rollback stays a one-line change.
 6. After 2 stable weeks, update the memory notes on the caching minimum and cost, and mark this plan complete.
 
 ---
@@ -440,5 +461,5 @@ Filled in as phases complete.
 | 1b, 1c | 2026-10-10 | New sponsorship phrases and the repost-link filter. Queue hit rate on past jobs goes from 46.8% to 57.4% (251 dead skips removed, 7 applied, all justified). 52 tests pass. |
 | 2 | 2026-10-10 | Code done, 63 tests pass. Eval gate not passed: every configuration ranks at chance on the filtered skip labels; Haiku 5.5 scores 14 points lower; full descriptions help Haiku 5.5. Disagreement review needed. |
 | Ship | 2026-10-10 | PR #12 and PR #13 deployed. First live run: 3 of 3 JSearch jobs dropped as repost-only, 3 of 3 jobs scored on Haiku 4.5, usage log line present. 65 tests pass. |
-| 3 | | |
+| 3 | 2026-10-10 | Disagreement review: you agreed with Haiku 5.5 21 times and Haiku 4.5 4 times. Seniority rule softened for bare minimums; ranking of your ratings 0.97. Threshold 70: 9 of 14 would apply and 0 of 18 wouldn't apply queued, about 19.5 a day before the cap. Live 3-job batch on Haiku 5.5 through the production scorer: 3 of 3 scored, cache read on every entry. 71 tests pass. |
 | 4 | | |

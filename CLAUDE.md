@@ -83,8 +83,8 @@ Adding a new secret: add to `.env.example` → `config/settings.py` → this tab
 |---------|-------|
 | Fetch interval | 6 hours |
 | Max job age | 48 hours |
-| Score ≥ 75 | Apply queue (capped at 20/day) — one-click manual apply or skip from dashboard |
-| Score < 75 | Archived |
+| Score ≥ `AUTO_APPLY_THRESHOLD` (75 on Haiku 4.5, 70 on Haiku 5.5) | Apply queue (capped at 20/day) — one-click manual apply or skip from dashboard |
+| Score below the threshold | Archived |
 | Queue expiry | Jobs in apply queue auto-archived after 30 days |
 | Visa filter | Skip if JD explicitly rejects sponsorship, requires US citizenship, or requires a security clearance |
 | Rejection cooldown | 30 days, only after 4+ rejections from a company; tier-1/2 companies exempt |

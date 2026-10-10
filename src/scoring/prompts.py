@@ -1,5 +1,7 @@
 """System and user prompt builders for Claude Haiku job scoring."""
 
+import copy
+
 # ---------------------------------------------------------------------------
 # Candidate resume — baked into the system prompt so every scoring call has
 # full context without re-sending it on each message.
@@ -93,11 +95,16 @@ Score fit and realism — not how desirable the job is.
 2. SENIORITY FIT (critical — drives ~30% of score)
    The candidate has ~8 years of total experience. Score against the job's stated requirement:
    - 5–8 years required: ideal fit — no penalty
-   - 3–5 years required: slight penalty (overqualified risk)
+   - A bare minimum of 2–4 years ("2+ years", "3+ years", "at least 4 years") on a
+     mid-level or senior role: no penalty — the candidate clears the minimum, and
+     companies set the level during interviews
+   - A stated range that tops out below the candidate ("3–5 years"): slight penalty
    - 8–10 years required: slight penalty (small stretch)
    - 10+ years required ("Lead", "Principal", "Architect"): heavy penalty — candidate is
      likely 2–3 years short; these roles rarely hire below the stated bar
-   - <3 years required (junior): heavy penalty (overqualified)
+   - Entry-level roles — a cap of 0–2 or 0–3 years, or "Engineer I", "Associate",
+     "new grad", "early career", "junior": heavy penalty (overqualified, and entry-level
+     roles rarely sponsor visas)
 
 3. DOMAIN EXPERIENCE MATCH (moderate — ~20% of score)
    Only give a bonus if the candidate's ACTUAL WORK EXPERIENCE is relevant to the domain.
@@ -140,7 +147,8 @@ EDGE CASES & DISAMBIGUATION
   not just the minimum. When no years are stated, infer from the title:
   "Senior" ≈ 5–8 yrs (ideal), "Staff"/"Lead" ≈ 8–12 yrs (slight stretch),
   "Principal"/"Architect"/"Distinguished" ≈ 12+ yrs (heavy penalty),
-  bare "Software Engineer" with no senior marker ≈ 2–5 yrs (slight overqualified penalty).
+  bare "Software Engineer" with no senior marker: no penalty unless the duties or
+  stated years mark it as entry-level.
 - Multiple languages listed: score on the PRIMARY language of the role's actual duties.
   "Java or Go" with Java-first responsibilities is a Java role. "Python backend with
   some legacy Java services" is not — the hire would be a Python engineer.
@@ -299,6 +307,14 @@ SCORING_TOOL: dict = {
     },
 }
 
+# Strict mode guarantees the input matches the schema, but rejects integer
+# minimum/maximum (verified 2026-10-10), so scorer.py clamps the score instead.
+SCORING_TOOL_STRICT: dict = copy.deepcopy(SCORING_TOOL)
+SCORING_TOOL_STRICT["strict"] = True
+SCORING_TOOL_STRICT["input_schema"]["additionalProperties"] = False
+for _bound in ("minimum", "maximum"):
+    SCORING_TOOL_STRICT["input_schema"]["properties"]["score"].pop(_bound)
+
 
 def build_system_prompt() -> str:
     """Return the system prompt with resume, rubric, and calibration examples baked in.
@@ -317,16 +333,15 @@ def build_system_prompt() -> str:
     )
 
 
-def build_user_prompt(job: dict) -> str:
+def build_user_prompt(job: dict, *, head: int = 2000, tail: int = 1000) -> str:
     """Return the user prompt for a single job.
 
-    Truncates description to 3,000 characters. This is the single authoritative
-    truncation point — scorer.py does not pre-truncate.
+    Keeps the first `head` and last `tail` characters of a longer description.
+    This is the single authoritative truncation point — scorer.py only picks the window.
     """
     description = job.get("description") or ""
-    _HEAD, _TAIL = 2000, 1000
-    if len(description) > _HEAD + _TAIL:
-        description = description[:_HEAD] + "\n...\n" + description[-_TAIL:]
+    if len(description) > head + tail:
+        description = description[:head] + "\n...\n" + description[-tail:]
 
     salary = job.get("salary_text") or "Not stated"
     tier = job.get("_tier_label") or "Unknown"

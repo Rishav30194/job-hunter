@@ -33,18 +33,55 @@ class ScorerRequestParamsTest(unittest.TestCase):
     """Request shape follows the configured model."""
 
     def test_haiku_55_sends_no_temperature(self):
-        with patch.object(scorer, "_MODEL", HAIKU_55), patch.object(scorer, "_ACCEPTS_TEMPERATURE", False):
+        with patch.object(scorer, "_MODEL", HAIKU_55), patch.object(scorer, "_HAIKU_45", False):
             params = scorer._request_params(JOB)
         self.assertEqual(params["model"], HAIKU_55)
         self.assertNotIn("temperature", params)
 
     def test_haiku_45_keeps_temperature_zero_for_rollback(self):
-        with patch.object(scorer, "_MODEL", HAIKU_45), patch.object(scorer, "_ACCEPTS_TEMPERATURE", True):
+        with patch.object(scorer, "_MODEL", HAIKU_45), patch.object(scorer, "_HAIKU_45", True):
             params = scorer._request_params(JOB)
         self.assertEqual(params["temperature"], 0)
 
     def test_model_defaults_to_settings(self):
         self.assertEqual(scorer._MODEL, scorer.settings.claude_model)
+
+    def test_haiku_55_uses_strict_tool_and_long_window(self):
+        job = dict(JOB, description="A" * 9000 + "B" * 3000 + "C" * 500 + "sponsor" + "D" * 3000)
+        with patch.object(scorer, "_MODEL", HAIKU_55), patch.object(scorer, "_HAIKU_45", False):
+            params = scorer._request_params(job)
+        self.assertTrue(params["tools"][0]["strict"])
+        prompt = params["messages"][0]["content"]
+        self.assertIn("A" * 9000 + "\n...\n", prompt)
+        self.assertTrue(prompt.endswith("D" * 3000))
+        self.assertNotIn("sponsor", prompt)  # the middle is still cut beyond 12K
+
+    def test_haiku_55_sees_text_the_3k_window_drops(self):
+        job = dict(JOB, description="A" * 5000 + "will not sponsor" + "B" * 5000)
+        with patch.object(scorer, "_HAIKU_45", False):
+            self.assertIn("will not sponsor", scorer._request_params(job)["messages"][0]["content"])
+        with patch.object(scorer, "_HAIKU_45", True):
+            self.assertNotIn("will not sponsor", scorer._request_params(job)["messages"][0]["content"])
+
+    def test_haiku_45_keeps_original_tool_and_window(self):
+        job = dict(JOB, description="A" * 2000 + "B" * 5000 + "C" * 1000)
+        with patch.object(scorer, "_HAIKU_45", True):
+            params = scorer._request_params(job)
+        self.assertIs(params["tools"][0], scorer.SCORING_TOOL)
+        self.assertNotIn("B", params["messages"][0]["content"].split("Job Description:")[1])
+
+    def test_prewarm_sends_the_same_tool_as_requests(self):
+        # Tools are part of the cached prefix: a mismatch would make every batch entry miss the cache.
+        for haiku_45 in (True, False):
+            with patch.object(scorer, "_HAIKU_45", haiku_45), \
+                    patch.object(scorer._client.messages, "create") as create:
+                scorer._prewarm_cache()
+                self.assertEqual(create.call_args.kwargs["tools"], scorer._request_params(JOB)["tools"])
+
+    def test_strict_tool_has_no_integer_bounds(self):
+        score = scorer.SCORING_TOOL_STRICT["input_schema"]["properties"]["score"]
+        self.assertNotIn("minimum", score)
+        self.assertIn("minimum", scorer.SCORING_TOOL["input_schema"]["properties"]["score"])
 
     def test_tool_call_stays_forced(self):
         # Forcing the tool skips thinking on Haiku 5.5 (verified 2026-10-10).
@@ -63,6 +100,10 @@ class ScorerRefusalTest(unittest.TestCase):
     def test_refusal_without_category_still_final(self):
         fields = scorer._parse_response(_refusal(None))
         self.assertEqual(fields["score_reasoning"], "Declined by model (unspecified)")
+
+    def test_out_of_range_score_is_clamped(self):
+        self.assertEqual(scorer._parse_response(_tool_response(score=140, reasoning="x", visa_disqualified=False))["score"], 100)
+        self.assertEqual(scorer._parse_response(_tool_response(score=-5, reasoning="x", visa_disqualified=False))["score"], 0)
 
     def test_tool_response_still_parses(self):
         fields = scorer._parse_response(_tool_response(score=81, reasoning="fit", visa_disqualified=False))

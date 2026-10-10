@@ -15,7 +15,7 @@ from config.settings import settings
 from data.companies import get_tier
 from src.anthropic_guard import CreditExhaustedError, is_credit_error, retryable_api_error
 from src.notifications.telegram import send_message
-from src.scoring.prompts import SCORING_TOOL, build_system_prompt, build_user_prompt
+from src.scoring.prompts import SCORING_TOOL, SCORING_TOOL_STRICT, build_system_prompt, build_user_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +38,13 @@ _TIER_LABELS = {1: "Tier-1", 2: "Tier-2", 3: "Tier-3"}
 
 _MODEL = settings.claude_model
 
-# Haiku 5.5 rejects any non-default temperature with a 400; Haiku 4.5 keeps
-# temperature 0 so a rollback scores exactly as before the upgrade.
-_ACCEPTS_TEMPERATURE = _MODEL.startswith("claude-haiku-4-5")
+# Haiku 4.5 keeps its original request shape (temperature 0, 3K-character
+# description window, non-strict tool) so a rollback scores exactly as before
+# the upgrade. Haiku 5.5 rejects any non-default temperature with a 400, and
+# runs the configuration the disagreement review validated: a 12K window,
+# because sponsorship and years requirements often sit mid-description, and a
+# strict tool (docs/haiku-5-5-upgrade-plan-2026-10-10.md).
+_HAIKU_45 = _MODEL.startswith("claude-haiku-4-5")
 
 # Batch polling cadence and ceiling. Most batches finish well under an hour;
 # the pipeline runs every 6 hours, so a 2-hour ceiling leaves ample slack
@@ -156,7 +160,8 @@ def _prewarm_cache() -> None:
             model=_MODEL,
             max_tokens=0,
             system=_SYSTEM_CONTENT,
-            tools=[SCORING_TOOL],
+            # Must match _request_params: tools are part of the cached prefix.
+            tools=[_scoring_tool()],
             messages=[{"role": "user", "content": "warmup"}],
         )
     except Exception:
@@ -221,6 +226,11 @@ def _score_batch(jobs_by_index: dict[int, dict]) -> dict[int, dict]:
     return scored
 
 
+def _scoring_tool() -> dict:
+    """Return the scoring tool definition for the configured model."""
+    return SCORING_TOOL if _HAIKU_45 else SCORING_TOOL_STRICT
+
+
 def _request_params(job: dict) -> dict:
     """Build the Messages API request body for one job — shared by batch and sequential paths."""
     params = {
@@ -229,13 +239,20 @@ def _request_params(job: dict) -> dict:
         # for the same text and writes longer reasoning (~200 tokens observed).
         "max_tokens": 1024,
         "system": _SYSTEM_CONTENT,
-        "tools": [SCORING_TOOL],
+        "tools": [_scoring_tool()],
         "tool_choice": {"type": "tool", "name": "score_job"},
-        "messages": [{"role": "user", "content": build_user_prompt(job)}],
+        "messages": [{"role": "user", "content": _user_prompt(job)}],
     }
-    if _ACCEPTS_TEMPERATURE:
+    if _HAIKU_45:
         params["temperature"] = 0
     return params
+
+
+def _user_prompt(job: dict) -> str:
+    """Return the user prompt with the description window for the configured model."""
+    if _HAIKU_45:
+        return build_user_prompt(job)
+    return build_user_prompt(job, head=9000, tail=3000)
 
 
 def _add_usage(totals: dict[str, int], usage) -> None:
@@ -268,7 +285,7 @@ def _parse_response(response) -> dict:
 
     result = tool_block.input
     return {
-        "score": result["score"],
+        "score": max(0, min(100, int(result["score"]))),
         "score_reasoning": result["reasoning"],
         # Haiku occasionally omits this boolean despite it being required in the schema.
         "visa_disqualified": result.get("visa_disqualified", False),

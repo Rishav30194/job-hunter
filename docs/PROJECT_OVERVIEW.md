@@ -16,7 +16,7 @@ beyond the apply button itself.
 | Goal | Mechanism |
 |------|-----------|
 | Zero stale listings | Hard 48-hour cutoff on all fetched jobs |
-| Minimal human time | Apply Queue shows only scored ≥75 jobs; one click to open and apply |
+| Minimal human time | Apply Queue shows only jobs scored at or above the threshold; one click to open and apply |
 | Maximum coverage | 8 search terms × Indeed + JSearch (Google for Jobs) per run |
 | Accurate scoring | Claude Haiku scores fit (not desirability) — tier and salary are neutral |
 | Visa safety | "No sponsorship" / US-citizenship / security-clearance phrases → auto-discard, persisted to DB |
