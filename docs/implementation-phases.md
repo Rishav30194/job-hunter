@@ -537,7 +537,7 @@ curl http://localhost:8501                 # dashboard responds 200
 
 ## Open Action Items (next session)
 
-1. **Monitor the Haiku 5.5 switch for 3 days** (live since 2026-10-10 23:02 UTC). Check each run's batch usage log line, refusals, and jobs queued per day against the Phase 4 rollback triggers in `docs/haiku-5-5-upgrade-plan-2026-10-10.md`. The first run after the switch had no new jobs, so the first production scoring is the 2026-10-11 ~05:00 UTC run.
+1. **Monitor the Haiku 5.5 switch for 3 days** (live since 2026-10-10 23:02 UTC). Check each run's batch usage log line, refusals, and jobs queued per day against the Phase 4 rollback triggers in `docs/haiku-5-5-upgrade-plan-2026-10-10.md`. First production scoring on Haiku 5.5: 2026-10-10 23:53 UTC, 16 of 16 jobs scored (2 queued at 72 and 70, 4 disqualified, 10 archived), about $0.0002 a job, no refusals. Monitoring ends 2026-10-13.
 2. **Optional: score borderline jobs twice.** Haiku 5.5 has no temperature control; between two eval runs 15 of 282 jobs crossed 70. Averaging two scores for jobs near the threshold (about 62–78) would cut that, for pennies a month. Measure it on the eval set first.
 
 Closed: API credits topped up on 2026-10-10. The Gmail refresh token was made permanent on 2026-06-09 (OAuth app published), and the user decided against off-site backup automation; the nightly on-VPS backup stays as it is.
