@@ -9,6 +9,11 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# httpx logs every request URL at INFO, and the Telegram URL embeds the bot
+# token, so any entry point that configures INFO logging would write the token
+# to its logs. Set here so every importer of send_message is covered.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 _API_URL = "https://api.telegram.org/bot{token}/sendMessage"
 _MAX_HIGH_MATCH = 10
 _MAX_MESSAGE_LEN = 4096
@@ -38,8 +43,13 @@ def send_message(text: str) -> None:
             timeout=10,
         )
         resp.raise_for_status()
-    except Exception:
-        logger.exception("Telegram send failed (length=%d)", len(text))
+    except Exception as exc:
+        # httpx exception text includes the request URL (and so the token); log a
+        # redacted message instead of the traceback.
+        detail = str(exc)
+        if settings.telegram_bot_token:
+            detail = detail.replace(settings.telegram_bot_token, "<token>")
+        logger.error("Telegram send failed (length=%d): %s: %s", len(text), type(exc).__name__, detail)
 
 
 def send_high_match_alert(jobs: list[dict]) -> None:

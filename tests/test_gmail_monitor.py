@@ -1,11 +1,22 @@
-"""Unit tests for the Gmail noise-sender skip list and batch classification flow."""
+"""Unit tests for the Gmail noise-sender skip list, batch classification flow, and job matching."""
 
 import unittest
+from contextlib import contextmanager
 from unittest.mock import patch
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
 from src.anthropic_guard import CreditExhaustedError
+from src.db.models import Base, Job
 from src.feedback import gmail_monitor
-from src.feedback.gmail_monitor import _is_noise_sender, check_gmail
+from src.feedback.gmail_monitor import (
+    _company_matches,
+    _find_matching_jobs,
+    _is_noise_sender,
+    _title_matches,
+    check_gmail,
+)
 
 UNIMPORTANT = {"category": "unimportant", "company": "", "job_title": "", "summary": "", "confident": False}
 
@@ -114,6 +125,117 @@ class CheckGmailFlowTest(unittest.TestCase):
         )
         mocks["_classify_email"].assert_called_once()
         self.assertEqual(stats["processed"], 1)
+
+
+class CompanyMatchesTest(unittest.TestCase):
+    """Email company names match the stored name across real production variants (2026-10-11)."""
+
+    def test_variants_match(self):
+        pairs = [
+            ("JPMorgan Chase & Co.", "JPMorganChase"),
+            ("OCC", "Options Clearing Corporation"),
+            ("Allstate Insurance Company", "Allstate Insurance"),
+            ("REI (Recreational Equipment Inc.)", "REI"),
+            ("Huntington National Bank", "Huntington Bank"),
+            ("Cigna", "The Cigna Group"),
+            ("Charles Schwab Corporation", "Charles Schwab"),
+            ("Coinbase", "Coinbase Global"),
+            ("CVS Health", "CVS Health"),
+        ]
+        for email, db in pairs:
+            with self.subTest(email=email, db=db):
+                self.assertTrue(_company_matches(email, db))
+
+    def test_different_companies_do_not_match(self):
+        pairs = [
+            ("Capital One", "Capital Group"),        # one-word DB name inside a longer email name
+            ("Huntington Ingalls Industries", "Huntington Bank"),
+            ("U.S. Bank", "Huntington Bank"),
+            ("Playlist", "Mindbody"),                # parent company: needs an alias, not a rule
+            ("", "Visa"),
+            ("Inc.", "Visa Inc."),                   # nothing left after suffix removal
+        ]
+        for email, db in pairs:
+            with self.subTest(email=email, db=db):
+                self.assertFalse(_company_matches(email, db))
+
+
+class TitleMatchesTest(unittest.TestCase):
+    """Title matching keeps the ILIKE containment rule but ignores requisition noise."""
+
+    def test_requisition_id_and_status_ignored(self):
+        self.assertTrue(_title_matches(
+            "R1057074 Digital Provider Software Development Engineer (Open)",
+            "Digital Provider Software Development Engineer",
+        ))
+        self.assertTrue(_title_matches(
+            "Consulting Application Engineer 5005427", "Consulting Application Engineer"))
+
+    def test_punctuation_ignored_and_containment_kept(self):
+        self.assertTrue(_title_matches(
+            "Sr. Lead Software Engineer - AWS/AI Engineer", "Sr. Lead Software Engineer - AWS/AI Engineer"))
+        self.assertTrue(_title_matches("Java Engineer", "Senior Java Engineer, Payments"))
+        self.assertTrue(_title_matches("Software Engineer - Data Platform (R37)",
+                                       "Software Engineer - Data Platform (R37)"))
+
+    def test_non_contiguous_or_empty_does_not_match(self):
+        self.assertFalse(_title_matches("Java Engineer", "Java Software Engineer"))
+        self.assertFalse(_title_matches("IS Technical Specialist (Backend Java Dev)",
+                                        "IS Technical Specialist (Senior Application Developer and Technical Lead)"))
+        self.assertFalse(_title_matches("R1057074", "Software Engineer"))  # nothing left to compare
+        self.assertFalse(_title_matches("Senior Software Engineer", ""))
+
+
+class FindMatchingJobsTest(unittest.TestCase):
+    """Only active applications are searched, and the title narrows variant company matches."""
+
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        self.session = Session(engine)
+        self.session.add_all([
+            Job(id="cvs-1", content_hash="h1", company="CVS Health", status="applied",
+                title="Digital Provider Software Development Engineer"),
+            Job(id="cvs-2", content_hash="h2", company="CVS Health", status="applied",
+                title="Software Development Engineer"),
+            Job(id="cvs-3", content_hash="h3", company="CVS Health", status="archived",
+                title="Digital Provider Software Development Engineer"),
+            Job(id="jpm-1", content_hash="h4", company="JPMorganChase", status="applied",
+                title="Sr. Lead Software Engineer - AWS/AI Engineer"),
+            Job(id="jpm-2", content_hash="h5", company="JPMorganChase", status="applied",
+                title="Senior Lead Software Engineer - Java and AWS"),
+        ])
+        self.session.commit()
+
+        @contextmanager
+        def fake_get_session():
+            yield self.session
+
+        patcher = patch.object(gmail_monitor, "get_session", fake_get_session)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def tearDown(self):
+        self.session.close()
+
+    def _ids(self, company, title):
+        return sorted(job.id for job in _find_matching_jobs(company, title))
+
+    def test_missed_cvs_rejection_now_matches_one_job(self):
+        self.assertEqual(
+            self._ids("CVS Health", "R1057074 Digital Provider Software Development Engineer (Open)"),
+            ["cvs-1"],
+        )
+
+    def test_company_variant_matches_one_job_by_title(self):
+        self.assertEqual(
+            self._ids("JPMorgan Chase & Co.", "Sr. Lead Software Engineer - AWS/AI Engineer"), ["jpm-1"])
+
+    def test_company_only_returns_all_active_applications(self):
+        self.assertEqual(self._ids("CVS Health", ""), ["cvs-1", "cvs-2"])
+
+    def test_no_company_returns_nothing(self):
+        self.assertEqual(self._ids("", "Software Development Engineer"), [])
 
 
 if __name__ == "__main__":

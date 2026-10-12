@@ -438,26 +438,92 @@ def _star_message(service, msg_id: str) -> None:
     ).execute()
 
 
+_WORD_RE = re.compile(r"[a-z0-9]+")
+_PARENTHETICAL_RE = re.compile(r"\([^)]*\)")
+_COMPANY_FILLER: frozenset[str] = frozenset({"the", "and", "of"})
+_COMPANY_SUFFIXES: frozenset[str] = frozenset({
+    "inc", "incorporated", "llc", "ltd", "limited", "corp", "corporation",
+    "co", "company", "group", "holdings", "plc",
+})
+# ATS emails can append the requisition status to the title, as in "... (Open)".
+_TITLE_NOISE: frozenset[str] = frozenset({"open", "closed", "filled"})
+
+
+def _company_matches(email_company: str, db_company: str) -> bool:
+    """Return True if two company names plausibly name the same employer.
+
+    Compares names without parentheticals, filler words, and legal suffixes.
+    Matches when they are equal without spaces ("JPMorgan Chase & Co." /
+    "JPMorganChase", "REI (Recreational Equipment Inc.)" / "REI"), when the
+    email's words all appear in the DB name ("Coinbase" / "Coinbase Global"), when
+    a DB name of two or more words appears in the email's ("Huntington National
+    Bank" / "Huntington Bank"), or when one is the other's acronym ("OCC" /
+    "Options Clearing Corporation").
+    """
+    full_a = [w for w in _WORD_RE.findall(_PARENTHETICAL_RE.sub(" ", email_company.lower()))
+              if w not in _COMPANY_FILLER]
+    full_b = [w for w in _WORD_RE.findall(_PARENTHETICAL_RE.sub(" ", db_company.lower()))
+              if w not in _COMPANY_FILLER]
+    a = [w for w in full_a if w not in _COMPANY_SUFFIXES]
+    b = [w for w in full_b if w not in _COMPANY_SUFFIXES]
+    if not a or not b:
+        return False
+    # The reverse subset needs two DB words: a one-word DB name such as "Capital"
+    # (from "Capital Group") would otherwise match "Capital One".
+    if "".join(a) == "".join(b) or set(a) <= set(b) or (len(set(b)) >= 2 and set(b) <= set(a)):
+        return True
+    # Acronyms keep the suffix words: "Options Clearing Corporation" is OCC, not OC.
+    acronym_a = "".join(w[0] for w in full_a)
+    acronym_b = "".join(w[0] for w in full_b)
+    return (len(acronym_b) >= 3 and "".join(a) == acronym_b) or (
+        len(acronym_a) >= 3 and "".join(b) == acronym_a
+    )
+
+
+def _title_words(title: str) -> list[str]:
+    """Lowercase title words without requisition IDs ("R1057074") or status noise."""
+    return [
+        w for w in _WORD_RE.findall(title.lower())
+        if w not in _TITLE_NOISE and not (len(w) >= 5 and any(c.isdigit() for c in w))
+    ]
+
+
+def _title_matches(email_title: str, db_title: str) -> bool:
+    """Return True if the email title's words appear as one contiguous run in the DB title.
+
+    The same containment rule as the earlier ILIKE match, applied after
+    normalisation, so "R1057074 Digital Provider Software Development Engineer
+    (Open)" matches "Digital Provider Software Development Engineer".
+    """
+    email = " ".join(_title_words(email_title))
+    return bool(email) and f" {email} " in f" {' '.join(_title_words(db_title))} "
+
+
 def _find_matching_jobs(company: str, title: str) -> list[Job]:
     """Return applied/phone_screen/interview jobs that match company and title.
 
-    Uses contains ILIKE on company so legal-name variants still match (email says
-    "Cigna", DB stores "The Cigna Group"). False-positive risk is low: the search
-    space is only active applications, and auto-updates additionally require a
-    title match plus high classifier confidence. Returns empty list on DB
-    unavailability.
+    Matching runs in Python over the company and title of every active
+    application, because emails name employers and roles in forms a SQL ILIKE
+    cannot bridge (see _company_matches and _title_matches). False-positive risk
+    stays low: the search space is only active applications, and auto-updates
+    additionally require a title match, exactly one match, and high classifier
+    confidence. Returns empty list on DB unavailability.
     """
     if not company:
         return []
     try:
         with get_session() as session:
-            q = session.query(Job).filter(
+            rows = session.query(Job.id, Job.company, Job.title).filter(
                 Job.status.in_(["applied", "phone_screen", "interview"]),
-                Job.company.ilike(f"%{company}%"),
-            )
-            if title:
-                q = q.filter(Job.title.ilike(f"%{title}%"))
-            jobs = q.all()
+            ).all()
+            ids = [
+                row.id for row in rows
+                if _company_matches(company, row.company or "")
+                and (not title or _title_matches(title, row.title or ""))
+            ]
+            if not ids:
+                return []
+            jobs = session.query(Job).filter(Job.id.in_(ids)).all()
             session.expunge_all()
             return jobs
     except Exception:
