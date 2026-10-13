@@ -17,6 +17,7 @@ E_VERIFY = (
     "Immigration Services."
 )
 DISQ_REASON = "Visa disqualified: sponsorship rejected or US citizenship/clearance required."
+LLM_DISQ_REASON = "Visa disqualified: job explicitly states \"USC / GC only\", which rejects visa sponsorship."
 
 
 def _now() -> datetime:
@@ -58,6 +59,12 @@ class RescoreScriptTest(unittest.TestCase):
                 description=E_VERIFY, url="https://x/4", status="disqualified",
                 score=0, score_reasoning=DISQ_REASON, visa_disqualified=True,
                 fetched_at=_now() - timedelta(days=60)),
+            # The LLM wrote this one: same prefix, but the phrase filter never saw
+            # a rejection, so selecting by prefix would rescore (and here, queue) it.
+            Job(content_hash="llm-disq", title="GOOD USC GC Only Role", company="StaffCo",
+                description=E_VERIFY, url="https://x/5", status="disqualified",
+                score=0, score_reasoning=LLM_DISQ_REASON, visa_disqualified=True,
+                fetched_at=_now() - timedelta(days=2)),
         ])
         self.session.commit()
 
@@ -103,10 +110,15 @@ class RescoreScriptTest(unittest.TestCase):
         self.assertEqual(stale.status, "disqualified")
         self.assertTrue(stale.visa_disqualified)
 
+        llm = by_hash["llm-disq"]
+        self.assertEqual(llm.status, "disqualified")
+        self.assertEqual(llm.score_reasoning, LLM_DISQ_REASON)
+
         mock_send.assert_called_once()
         telegram_text = mock_send.call_args[0][0]
         self.assertIn("U.S. Bank", telegram_text)
         self.assertNotIn("Acme", telegram_text)
+        self.assertNotIn("StaffCo", telegram_text)
 
     def test_rerun_is_idempotent(self):
         self._run()

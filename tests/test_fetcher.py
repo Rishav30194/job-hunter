@@ -15,6 +15,18 @@ E_VERIFY_BOILERPLATE = (
     "eligibility verification system operated by the U.S. Citizenship and "
     "Immigration Services."
 )
+CLOUDFLARE_EXPORT_CLAUSE = (
+    "This position may require access to information protected under U.S. export "
+    "control laws, including the U.S. Export Administration Regulations. Please note "
+    "that any offer of employment may be conditioned on your authorization to receive "
+    "software or technology controlled under these U.S. export laws without "
+    "sponsorship for an export license."
+)
+GUIDEHOUSE_PAY_SENTENCE = (
+    "Compensation decisions depend on a wide range of factors, including but not "
+    "limited to skill sets, experience and training, security clearances, licensure "
+    "and certifications, and other business and organizational needs."
+)
 
 
 class IsVisaRejectedTest(unittest.TestCase):
@@ -98,6 +110,24 @@ class IsVisaRejectedTest(unittest.TestCase):
     def test_empty_and_none_are_not_rejected(self):
         self.assertFalse(_is_visa_rejected(None))
         self.assertFalse(_is_visa_rejected(""))
+
+    def test_export_license_and_pay_boilerplate_are_not_rejected(self):
+        # Verbatim from production ads (2026-10-12): every Cloudflare posting,
+        # and Guidehouse's pay-range sentence. Neither is about work visas.
+        self.assertFalse(_is_visa_rejected(CLOUDFLARE_EXPORT_CLAUSE))
+        self.assertFalse(_is_visa_rejected(GUIDEHOUSE_PAY_SENTENCE))
+        self.assertFalse(_is_visa_rejected(
+            "under these U\\.S\\. export laws without sponsorship for an export\nlicence\\."))
+
+    def test_real_rejection_next_to_boilerplate_is_still_rejected(self):
+        self.assertTrue(_is_visa_rejected(
+            CLOUDFLARE_EXPORT_CLAUSE + " Must be authorized to work in the US without sponsorship."))
+        self.assertTrue(_is_visa_rejected(
+            GUIDEHOUSE_PAY_SENTENCE + " Must hold an active security clearance."))
+        # Only the plural pay-factor list is boilerplate; a singular requirement
+        # followed by "licensure" is still a requirement.
+        self.assertTrue(_is_visa_rejected(
+            "Must hold an active security clearance, licensure as a PE is a plus."))
 
 
 class PickJsearchLinkTest(unittest.TestCase):

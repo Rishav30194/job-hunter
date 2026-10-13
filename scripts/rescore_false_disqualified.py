@@ -6,8 +6,8 @@ rejection), disqualifying good jobs. After the phrase-list fix, this script
 re-runs the new filter on recently disqualified rows and sends the false
 positives through normal LLM scoring.
 
-Idempotent: recovered rows no longer have the 'Visa disqualified:' reasoning,
-so a re-run selects nothing new. Rows are updated in place — never deleted or
+Idempotent: recovered rows no longer carry the pre-filter's exact reasoning
+message, so a re-run selects nothing new. Rows are updated in place — never deleted or
 re-inserted. A scoring failure leaves all rows untouched.
 
 Run on the VPS:
@@ -25,7 +25,7 @@ from src.db.models import Job
 from src.db.session import get_session
 from src.ingestion.fetcher import _is_visa_rejected
 from src.notifications.telegram import send_message
-from src.scoring.scorer import score_jobs
+from src.scoring.scorer import _DISQUALIFIED_FIELDS, score_jobs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("rescore_false_disqualified")
@@ -35,11 +35,16 @@ _WINDOW_DAYS = 30
 
 
 def _select_candidates(session) -> list[Job]:
-    """Return recently disqualified jobs whose reasoning came from the phrase pre-filter."""
+    """Return recently disqualified jobs whose reasoning came from the phrase pre-filter.
+
+    Matches the pre-filter's exact message, not the "Visa disqualified:" prefix:
+    Haiku 5.5 starts its own visa reasoning with that prefix too, and rescoring
+    those rows could clear a genuine rejection on run-to-run variance.
+    """
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=_WINDOW_DAYS)
     return list(session.scalars(
         select(Job).where(
-            Job.score_reasoning.like("Visa disqualified:%"),
+            Job.score_reasoning == _DISQUALIFIED_FIELDS["score_reasoning"],
             Job.fetched_at >= cutoff,
         )
     ))

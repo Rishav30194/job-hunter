@@ -111,6 +111,16 @@ VISA_REJECTION_PHRASES: list[str] = [
 
 
 _MARKDOWN_ESCAPE = re.compile(r"\\(.)")
+# Boilerplate that contains a rejection phrase but says nothing about visas,
+# removed before matching. The export-control clause in every Cloudflare ad
+# ("...under these u.s. export laws without sponsorship for an export license")
+# is about a Commerce Department export license, not a work visa; Guidehouse's
+# pay-range sentence lists "security clearances, licensure and certifications"
+# as factors in pay, not as requirements. Together they killed 275 jobs unscored
+# (2026-06-10 to 2026-10-12), including every Cloudflare posting.
+_BENIGN_VISA_CONTEXTS = re.compile(
+    r"without sponsorship for an export licen[cs]e|security clearances, licensure"
+)
 
 # Repost/scraper sites JSearch often returns as the only apply link. Since
 # 2026-07-16 the user applied to none of their listings and skipped 200+
@@ -424,6 +434,7 @@ def _is_visa_rejected(description: str | None) -> bool:
     # Indeed descriptions arrive as escaped markdown ("employment\-based") and
     # wrap lines mid-sentence; both would split a phrase and hide the match.
     text = " ".join(_MARKDOWN_ESCAPE.sub(r"\1", description).lower().split())
+    text = _BENIGN_VISA_CONTEXTS.sub(" ", text)
     return any(phrase in text for phrase in VISA_REJECTION_PHRASES)
 
 

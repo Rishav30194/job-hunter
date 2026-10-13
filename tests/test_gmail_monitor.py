@@ -133,6 +133,7 @@ class CompanyMatchesTest(unittest.TestCase):
     def test_variants_match(self):
         pairs = [
             ("JPMorgan Chase & Co.", "JPMorganChase"),
+            ("JPMorgan", "JPMorganChase"),           # the old ILIKE matched across the missing space
             ("OCC", "Options Clearing Corporation"),
             ("Allstate Insurance Company", "Allstate Insurance"),
             ("REI (Recreational Equipment Inc.)", "REI"),
@@ -151,6 +152,7 @@ class CompanyMatchesTest(unittest.TestCase):
             ("Capital One", "Capital Group"),        # one-word DB name inside a longer email name
             ("Huntington Ingalls Industries", "Huntington Bank"),
             ("U.S. Bank", "Huntington Bank"),
+            ("Citi", "Citizens"),                    # prefix rule needs five characters
             ("Playlist", "Mindbody"),                # parent company: needs an alias, not a rule
             ("", "Visa"),
             ("Inc.", "Visa Inc."),                   # nothing left after suffix removal
