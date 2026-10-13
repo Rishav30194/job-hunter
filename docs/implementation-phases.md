@@ -634,4 +634,15 @@ Branch `fix/log-redaction-and-email-matching`, from the first day of Haiku 5.5 m
 - [x] **Gmail matching across name variants** — `_find_matching_jobs` compares names in Python instead of SQL ILIKE. Company names match after dropping legal suffixes and parentheticals, on equal-without-spaces, word subset, or acronym. Titles keep the ILIKE containment rule after dropping requisition IDs (5+ characters with a digit) and "open"/"closed"/"filled". A one-word DB name never matches a longer email name ("Capital Group" does not match "Capital One").
 - [x] Real misses this fixes (2026-10-11): a CVS rejection whose title was `R1057074 … (Open)` left the job `applied`, and confirmations from JPMorgan Chase & Co., OCC, Allstate Insurance Company, REI, Charles Schwab Corporation, and HCA did not match. A read-only replay of that day's 26 emails against production's 823 active applications: 7 went from no match to the correct single job, none lost a match. Not covered: parent-company names such as Playlist for Mindbody.
 - [x] 11 new tests (81 total), including a SQLite-backed `_find_matching_jobs` test that fails on the old matcher.
-- [ ] Merge, deploy, and correct the CVS row (still `applied`) in the VPS DB.
+- [x] Merged (PR #20) 2026-10-12.
+- [ ] Deploy, then correct two rows still `applied` in the VPS DB: CVS "Digital Provider Software Development Engineer" and American Express "Sr Software Engineer I - Java - One Data Platform" (its 2026-10-12 rejection email ended in requisition ID `26013419`; the new matcher picks exactly this row).
+
+## Post-Launch Fix — Visa Pre-Filter Boilerplate (2026-10-12)
+
+Branch `fix/visa-filter-benign-boilerplate`, from day 2 of Haiku 5.5 monitoring.
+
+- [x] **Two boilerplate sentences removed before phrase matching** (`_BENIGN_VISA_CONTEXTS` in `src/ingestion/fetcher.py`). Every Cloudflare ad carries an export-control clause, "…under these U.S. export laws without sponsorship for an export license", which matched "without sponsorship"; an export license comes from the Commerce Department and has nothing to do with work visas. Guidehouse's pay-range sentence lists "security clearances, licensure and certifications" as pay factors, which matched "security clearance". Every other phrase, and a real rejection elsewhere in the same ad, still matches.
+- [x] Impact: 275 of 5,092 pre-filter disqualifications (2026-06-10 to 2026-10-12) were caused only by these sentences: Cloudflare 243 (every posting since ATS polling began), Guidehouse 26, MACH Industries 4, unnamed 2. A read-only replay on production freed exactly these 275 and no others; 56 fall inside the recovery script's 30-day window.
+- [x] Dry run: 5 freed Cloudflare software-engineering jobs through the production scorer (nothing persisted). Haiku 5.5 did not treat the export clause as a visa rejection (0 of 5), but scored them 0–48: Cloudflare's stack is Rust, Go, and C++, and two of the five are London or Lisbon roles that passed the US-location filter. Expect few recovered jobs to reach the queue.
+- [x] 2 new tests (83 total).
+- [ ] Merge, deploy, then run `scripts/rescore_false_disqualified.py` on the VPS (about 56 jobs, roughly $0.01).
