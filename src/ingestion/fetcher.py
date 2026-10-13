@@ -119,7 +119,7 @@ _MARKDOWN_ESCAPE = re.compile(r"\\(.)")
 # as factors in pay, not as requirements. Together they killed 275 jobs unscored
 # (2026-06-10 to 2026-10-12), including every Cloudflare posting.
 _BENIGN_VISA_CONTEXTS = re.compile(
-    r"without sponsorship for an export licen[cs]e|security clearances?, licensure"
+    r"without sponsorship for an export licen[cs]e|security clearances, licensure"
 )
 
 # Repost/scraper sites JSearch often returns as the only apply link. Since

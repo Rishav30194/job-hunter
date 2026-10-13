@@ -124,6 +124,10 @@ class IsVisaRejectedTest(unittest.TestCase):
             CLOUDFLARE_EXPORT_CLAUSE + " Must be authorized to work in the US without sponsorship."))
         self.assertTrue(_is_visa_rejected(
             GUIDEHOUSE_PAY_SENTENCE + " Must hold an active security clearance."))
+        # Only the plural pay-factor list is boilerplate; a singular requirement
+        # followed by "licensure" is still a requirement.
+        self.assertTrue(_is_visa_rejected(
+            "Must hold an active security clearance, licensure as a PE is a plus."))
 
 
 class PickJsearchLinkTest(unittest.TestCase):

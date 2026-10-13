@@ -455,6 +455,7 @@ def _company_matches(email_company: str, db_company: str) -> bool:
     Compares names without parentheticals, filler words, and legal suffixes.
     Matches when they are equal without spaces ("JPMorgan Chase & Co." /
     "JPMorganChase", "REI (Recreational Equipment Inc.)" / "REI"), when the
+    email's name starts the DB name ("JPMorgan" / "JPMorganChase"), when the
     email's words all appear in the DB name ("Coinbase" / "Coinbase Global"), when
     a DB name of two or more words appears in the email's ("Huntington National
     Bank" / "Huntington Bank"), or when one is the other's acronym ("OCC" /
@@ -468,9 +469,17 @@ def _company_matches(email_company: str, db_company: str) -> bool:
     b = [w for w in full_b if w not in _COMPANY_SUFFIXES]
     if not a or not b:
         return False
-    # The reverse subset needs two DB words: a one-word DB name such as "Capital"
-    # (from "Capital Group") would otherwise match "Capital One".
-    if "".join(a) == "".join(b) or set(a) <= set(b) or (len(set(b)) >= 2 and set(b) <= set(a)):
+    compact_a, compact_b = "".join(a), "".join(b)
+    # The prefix rule keeps what the old ILIKE matched across a missing space
+    # ("JPMorgan" / "JPMorganChase"); five characters stop "Citi" matching
+    # "Citizens" (both have active applications). The reverse subset needs two DB words: a one-word DB name
+    # such as "Capital" (from "Capital Group") would otherwise match "Capital One".
+    if (
+        compact_a == compact_b
+        or (len(compact_a) >= 5 and compact_b.startswith(compact_a))
+        or set(a) <= set(b)
+        or (len(set(b)) >= 2 and set(b) <= set(a))
+    ):
         return True
     # Acronyms keep the suffix words: "Options Clearing Corporation" is OCC, not OC.
     acronym_a = "".join(w[0] for w in full_a)
