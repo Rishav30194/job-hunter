@@ -1,7 +1,9 @@
-"""Unit tests for the visa pre-filter and JSearch link choice in src.ingestion.fetcher."""
+"""Unit tests for the visa pre-filter and JSearch handling in src.ingestion.fetcher."""
 
 import unittest
 from unittest.mock import MagicMock, patch
+
+import pandas as pd
 
 from src.ingestion import fetcher
 from src.ingestion.fetcher import _is_visa_rejected, _pick_jsearch_link
@@ -173,6 +175,47 @@ class PickJsearchLinkTest(unittest.TestCase):
 
     def test_no_links_at_all_is_dropped(self):
         self.assertIsNone(_pick_jsearch_link({}))
+
+
+def _jsearch_response(payload: object) -> MagicMock:
+    response = MagicMock()
+    response.json.return_value = payload
+    return response
+
+
+class JsearchMalformedResponseTest(unittest.TestCase):
+    """A bad JSearch reply costs only JSearch's jobs, never the whole run.
+
+    On 2026-10-28 JSearch sent `data` as a string twice; iterating it handed
+    characters to the normalizer and two pipeline runs fetched nothing.
+    """
+
+    GOOD_ITEM = {"job_title": "Senior Java Engineer", "employer_name": "Acme",
+                 "job_apply_link": "https://careers.acme.com/1"}
+
+    def _fetch(self, payload: object) -> list[dict]:
+        with patch.object(fetcher.settings, "rapidapi_key", "test-key"), \
+                patch.object(fetcher.httpx, "get", return_value=_jsearch_response(payload)):
+            return fetcher._fetch_jsearch()
+
+    def test_non_list_data_returns_empty_and_logs_the_payload(self):
+        for data in ("Too many requests", {"message": "error"}, None):
+            with self.subTest(data=data), self.assertLogs(fetcher.logger, "ERROR") as logs:
+                self.assertEqual(self._fetch({"status": "OK", "data": data}), [])
+            self.assertIn("unexpected", logs.output[0])
+            self.assertIn(repr(data)[:10], logs.output[0])
+
+    def test_non_dict_items_are_skipped(self):
+        jobs = self._fetch({"data": ["junk", self.GOOD_ITEM, 42]})
+        self.assertEqual([j["url"] for j in jobs], ["https://careers.acme.com/1"])
+
+    def test_fetch_jobs_keeps_other_sources_when_jsearch_raises(self):
+        ats_job = {"url": "https://boards.greenhouse.io/acme/1", "title": "Senior Java Engineer"}
+        with patch.object(fetcher, "_scrape", return_value=pd.DataFrame()), \
+                patch.object(fetcher, "_fetch_jsearch", side_effect=AttributeError("boom")), \
+                patch.object(fetcher, "fetch_ats_jobs", return_value=[ats_job]), \
+                patch.object(fetcher, "_apply_filters", side_effect=lambda jobs: jobs):
+            self.assertEqual(fetcher.fetch_jobs(), [ats_job])
 
 
 if __name__ == "__main__":
