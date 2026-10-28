@@ -173,7 +173,11 @@ def fetch_jobs() -> list[dict]:
     logger.info("Indeed: %d jobs across %d search terms", len(all_jobs), len(SEARCH_TERMS))
 
     # JSearch — exactly 1 call per run to stay within 200 req/month free tier
-    jsearch_jobs = _apply_filters(_fetch_jsearch())
+    try:
+        jsearch_jobs = _apply_filters(_fetch_jsearch())
+    except Exception:
+        logger.exception("JSearch processing failed")
+        jsearch_jobs = []
     fresh_jsearch = [j for j in jsearch_jobs if j["url"] not in seen_urls]
     seen_urls.update(j["url"] for j in fresh_jsearch if j["url"])
     all_jobs.extend(fresh_jsearch)
@@ -226,12 +230,19 @@ def _fetch_jsearch() -> list[dict]:
             timeout=15,
         )
         response.raise_for_status()
-        items = response.json().get("data", [])
+        payload = response.json()
     except Exception:
         logger.exception("JSearch fetch failed")
         return []
 
-    jobs = [_normalize_jsearch(item) for item in items]
+    # JSearch has answered 200 with `data` as a string (2026-10-28); log the
+    # payload, since nothing else records what it sent.
+    items = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        logger.error("JSearch returned an unexpected payload, skipping: %.500r", payload)
+        return []
+
+    jobs = [_normalize_jsearch(item) for item in items if isinstance(item, dict)]
     linked = [job for job in jobs if job["url"]]
     logger.info(
         "JSearch: fetched %d raw jobs, dropped %d with no usable apply link (repost sites or none)",

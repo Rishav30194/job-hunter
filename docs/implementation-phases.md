@@ -649,3 +649,13 @@ Branch `fix/visa-filter-benign-boilerplate`, from day 2 of Haiku 5.5 monitoring.
 - [x] **Company prefix rule** (code review, fixes a PR #20 regression). PR #20's word-based company match dropped what the old ILIKE matched across a missing space: "JPMorgan" no longer matched "JPMorganChase", the employer with the most active applications (50). An email name of five or more characters that starts the stored name now matches. Five, not four, because four would pair "Citi" with "Citizens" (the old ILIKE did); across 389 active company names the rule adds one pair, "Alpaca" and "AlpacaJapan株式会社".
 - [x] 2 new tests; the review fixes add assertions to 4 tests (83 total), each failing on the code before its fix.
 - [ ] Merge, deploy, then run `scripts/rescore_false_disqualified.py` on the VPS (56 jobs, roughly $0.01).
+
+## Post-Launch Fix — Malformed JSearch Response (2026-10-28)
+
+Branch `fix/jsearch-malformed-response`.
+
+- [x] **A bad JSearch reply no longer fails the whole run.** At 02:20 and 08:20 UTC on 2026-10-28, JSearch answered 200 with `data` as a string. `_fetch_jsearch` iterated it, `_normalize_jsearch` received characters, and the `AttributeError` escaped `fetch_jobs()`, so each run dropped the ~950 Indeed and ATS jobs it had already fetched and scored nothing. Gmail still ran; the 14:20 run recovered, and the missed jobs were still inside the 48-hour window.
+- [x] `_fetch_jsearch` returns no jobs and logs the payload (first 500 characters) when `data` is not a list, and skips list items that are not objects. The failing payload was never logged, so its content is unknown.
+- [x] `fetch_jobs()` wraps the JSearch step in `try/except`, like the ATS step, so any other JSearch failure costs only JSearch's ~10 jobs.
+- [x] 3 new tests (86 total), each failing on the code before the fix; the string case reproduces the production traceback.
+- [ ] Merge and deploy.
